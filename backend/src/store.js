@@ -31,6 +31,7 @@ function seedData() {
         id: "U11", name: "UOB", shares: 100, avgCost: 39.10,
         price: 44.29, annualDiv: 1.56, divReceived: 0,
         bookValuePerShare: 34.6, // manually refreshed quarterly -- see README
+        payoutRatio: 57,
         priceHistory: [], yieldHistory: [],
         criteria: { type: "bank-pb", pbLookbackYears: 5, pbHistoricalAvg: 1.15, pbHistoricalBandLow: 1.0 }, // placeholder -- verify against real 5yr data before going live
         alertState: { tier1: false, tier2: false },
@@ -39,6 +40,7 @@ function seedData() {
         id: "D05", name: "DBS Group Holdings", shares: 100, avgCost: 65.78,
         price: 70.28, annualDiv: 2.79, divReceived: 0,
         bookValuePerShare: 19.09, // manually refreshed quarterly -- see README
+        payoutRatio: 64,
         priceHistory: [], yieldHistory: [],
         criteria: { type: "bank-pb", pbLookbackYears: 5, pbHistoricalAvg: 1.9, pbHistoricalBandLow: 1.6 }, // placeholder -- verify against real 5yr data before going live
         alertState: { tier1: false, tier2: false },
@@ -56,6 +58,7 @@ function seedData() {
     ],
     alertLog: [],
     incomeHistory: [],
+    divHistory: [],
     lastCheckin: null,
   };
 }

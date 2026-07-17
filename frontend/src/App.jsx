@@ -12,6 +12,19 @@ const COLORS = {
 };
 const PIE_COLORS = ["#F36F4A", "#6FCF97", "#6B9FE8", "#E8B84B", "#B08CE8", "#6B7591"];
 const H = { fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 0.5 };
+const TICKER_LOOKUP = {
+  D05: "DBS Group Holdings", O39: "OCBC Bank", U11: "UOB", Z74: "Singtel",
+  C6L: "Singapore Airlines", C38U: "CapitaLand Integrated Commercial Trust",
+  A17U: "Ascendas REIT", S68: "SGX", BN4: "Keppel Ltd", C09: "City Developments",
+  G3B: "Amova Singapore STI ETF", CLR: "Lion-Phillip S-REIT ETF", ES3: "SPDR STI ETF",
+};
+function safetyFlag(payoutRatio) {
+  if (payoutRatio === null || payoutRatio === undefined || payoutRatio === "") return { level: "none", text: "No data" };
+  const pr = Number(payoutRatio);
+  if (pr >= 95) return { level: "red", text: "Payout tight" };
+  if (pr >= 75) return { level: "amber", text: "Watch payout" };
+  return { level: "green", text: "Covered" };
+}
 
 function fmt(n, d = 2) {
   if (n === null || n === undefined || isNaN(n)) return "-";
@@ -81,10 +94,22 @@ export default function App() {
   const [buyQty, setBuyQty] = useState("");
   const [buyPrice, setBuyPrice] = useState("");
   const [checkinRunning, setCheckinRunning] = useState(false);
+  const [watchPick, setWatchPick] = useState("");
 
   useEffect(() => {
-    fetch("/api/data").then((r) => r.json()).then((d) => { setData(d); setLoading(false); })
-      .catch((e) => { console.error(e); setLoading(false); });
+    fetch("/api/data").then((r) => r.json()).then((d) => {
+      const withUid = (arr, prefix) => (arr || []).map((item, i) => item.uid ? item : { ...item, uid: `${prefix}-${item.id || i}-${i}` });
+      const normalized = {
+        ...d,
+        holdings: withUid(d.holdings, "h"),
+        otherHoldings: withUid(d.otherHoldings, "o"),
+        watchlist: withUid(d.watchlist, "w"),
+        dividendCalendar: withUid(d.dividendCalendar, "d"),
+        divHistory: d.divHistory || [],
+      };
+      setData(normalized);
+      setLoading(false);
+    }).catch((e) => { console.error(e); setLoading(false); });
   }, []);
 
   const save = useCallback(async (next) => {
@@ -106,11 +131,31 @@ export default function App() {
     setCheckinRunning(false);
   };
 
-  const updateHolding = (id, field, value) => save({ ...data, holdings: data.holdings.map((h) => h.id === id ? { ...h, [field]: value } : h) });
-  const updateOther = (id, field, value) => save({ ...data, otherHoldings: data.otherHoldings.map((h) => h.id === id ? { ...h, [field]: value } : h) });
-  const updateWatch = (id, field, value) => save({ ...data, watchlist: data.watchlist.map((w) => w.id === id ? { ...w, [field]: value } : w) });
-  const removeWatch = (id) => save({ ...data, watchlist: data.watchlist.filter((w) => w.id !== id) });
-  const addWatch = () => save({ ...data, watchlist: [...data.watchlist, { id: "TICK", name: "New ticker", price: 0, notes: "", priceHistory: [] }] });
+  const updateHolding = (uid, field, value) => save({ ...data, holdings: data.holdings.map((h) => h.uid === uid ? { ...h, [field]: value } : h) });
+  const removeHolding = (uid) => save({ ...data, holdings: data.holdings.filter((h) => h.uid !== uid) });
+  const addHolding = () => save({ ...data, holdings: [...data.holdings, { uid: `h-new-${Date.now()}`, id: "NEW", name: "New stock", shares: 0, avgCost: 0, price: 0, annualDiv: 0, divReceived: 0, payoutRatio: null, priceHistory: [], yieldHistory: [] }] });
+  const updateOther = (uid, field, value) => save({ ...data, otherHoldings: data.otherHoldings.map((h) => h.uid === uid ? { ...h, [field]: value } : h) });
+  const updateWatch = (uid, field, value) => save({ ...data, watchlist: data.watchlist.map((w) => w.uid === uid ? { ...w, [field]: value } : w) });
+  const removeWatch = (uid) => save({ ...data, watchlist: data.watchlist.filter((w) => w.uid !== uid) });
+  const addWatch = () => {
+    if (!watchPick) return;
+    const uid = `w-${Date.now()}`;
+    if (watchPick === "__custom__") {
+      save({ ...data, watchlist: [...data.watchlist, { uid, id: "TICK", name: "New ticker", price: 0, notes: "", priceHistory: [] }] });
+    } else {
+      save({ ...data, watchlist: [...data.watchlist, { uid, id: watchPick, name: TICKER_LOOKUP[watchPick] || watchPick, price: 0, notes: "", priceHistory: [] }] });
+    }
+    setWatchPick("");
+  };
+  const logWatchPrice = (uid) => {
+    const todayStr = todayISO();
+    save({
+      ...data,
+      watchlist: data.watchlist.map((w) => w.uid === uid
+        ? { ...w, priceHistory: [...(w.priceHistory || []).filter((h) => h.date !== todayStr), { date: todayStr, close: w.price }] }
+        : w),
+    });
+  };
 
   const addAlert = () => {
     if (!newAlert.trim()) return;
@@ -122,14 +167,14 @@ export default function App() {
   const recordPurchase = () => {
     const qty = parseFloat(buyQty), price = parseFloat(buyPrice);
     if (!buyTicker || !qty || !price) return;
-    const h = data.holdings.find((x) => x.id === buyTicker);
+    const h = data.holdings.find((x) => x.uid === buyTicker);
     if (!h) return;
     const newShares = h.shares + qty;
     const newAvgCost = newShares > 0 ? ((h.shares * h.avgCost) + (qty * price)) / newShares : 0;
     save({
       ...data,
-      holdings: data.holdings.map((x) => x.id === buyTicker ? { ...x, shares: newShares, avgCost: newAvgCost, price } : x),
-      alertLog: [{ date: todayISO(), text: `Bought ${qty} ${buyTicker} at $${price} -- new avg cost $${fmt(newAvgCost, 3)}` }, ...data.alertLog],
+      holdings: data.holdings.map((x) => x.uid === buyTicker ? { ...x, shares: newShares, avgCost: newAvgCost, price } : x),
+      alertLog: [{ date: todayISO(), text: `Bought ${qty} ${h.id} at $${price} -- new avg cost $${fmt(newAvgCost, 3)}` }, ...data.alertLog],
     });
     setBuyQty(""); setBuyPrice("");
   };
@@ -141,10 +186,15 @@ export default function App() {
     save({
       ...data,
       holdings: data.holdings.map((x) => x.id === h.id ? { ...x, divReceived: (x.divReceived || 0) + cash } : x),
-      dividendCalendar: data.dividendCalendar.filter((d) => d !== entry),
+      dividendCalendar: data.dividendCalendar.filter((d) => d.uid !== entry.uid),
+      divHistory: [{ id: entry.id, date: todayISO(), cash }, ...(data.divHistory || [])],
       alertLog: [{ date: todayISO(), text: `Received $${fmt(cash)} dividend from ${entry.id}` }, ...data.alertLog],
     });
   };
+  const addCalendarEntry = () => save({ ...data, dividendCalendar: [...data.dividendCalendar, { uid: `d-new-${Date.now()}`, id: data.holdings[0]?.id || "", exDate: todayISO(), payDate: todayISO(), perShare: 0, estimated: true }] });
+  const updateCalendar = (uid, field, value) => save({ ...data, dividendCalendar: data.dividendCalendar.map((d) => d.uid === uid ? { ...d, [field]: value } : d) });
+  const removeCalendarEntry = (uid) => save({ ...data, dividendCalendar: data.dividendCalendar.filter((d) => d.uid !== uid) });
+  const clearEmptyCalendarEntries = () => save({ ...data, dividendCalendar: data.dividendCalendar.filter((d) => d.perShare > 0) });
 
   const logIncomeSnapshot = () => {
     const month = todayISO().slice(0, 7);
@@ -177,11 +227,23 @@ export default function App() {
   }, [data]);
 
   const diversification = useMemo(() => computed ? computed.rows.filter((r) => r.monthlyIncome > 0).map((r) => ({ name: r.id, value: Math.round(r.monthlyIncome * 100) / 100 })) : [], [computed]);
+  const yieldOnCostChart = useMemo(() => computed ? computed.rows.filter((r) => r.yieldOnCost !== null).map((r) => ({ name: r.id, yoc: Math.round(r.yieldOnCost * 100) / 100 })) : [], [computed]);
   const upcomingCalendar = useMemo(() => {
     if (!data) return [];
-    const today = new Date();
+    const today = new Date(); today.setHours(0, 0, 0, 0);
     return [...(data.dividendCalendar || [])].filter((d) => new Date(d.payDate) >= today).sort((a, b) => new Date(a.payDate) - new Date(b.payDate));
   }, [data]);
+  const calendarChartData = useMemo(() => {
+    if (!data) return [];
+    const months = {};
+    upcomingCalendar.forEach((d) => {
+      const h = data.holdings.find((x) => x.id === d.id);
+      if (!h) return;
+      const key = d.payDate.slice(0, 7);
+      months[key] = (months[key] || 0) + h.shares * d.perShare;
+    });
+    return Object.entries(months).sort(([a], [b]) => a.localeCompare(b)).map(([month, cash]) => ({ month, cash: Math.round(cash * 100) / 100 }));
+  }, [upcomingCalendar, data]);
 
   if (loading || !data || !computed) return <div style={{ color: COLORS.textSecondary, padding: 40, fontFamily: "sans-serif", background: COLORS.bg, minHeight: "100vh" }}>Loading dashboard…</div>;
 
@@ -280,48 +342,104 @@ export default function App() {
                   Stock
                   <select value={buyTicker} onChange={(e) => setBuyTicker(e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 13, padding: "7px 8px", width: 120 }}>
                     <option value="">Select…</option>
-                    {data.holdings.map((h) => <option key={h.id} value={h.id}>{h.id}</option>)}
+                    {data.holdings.map((h) => <option key={h.uid} value={h.uid}>{h.id}</option>)}
                   </select>
                 </label>
                 <Field label="Quantity" value={buyQty} onChange={setBuyQty} width={90} />
                 <Field label="Price paid" value={buyPrice} onChange={setBuyPrice} width={90} prefix="$" />
                 <Button variant="orange" onClick={recordPurchase}>Record purchase</Button>
               </div>
+              <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 10 }}>Don't see the stock you bought? Add it below in the holdings table first, then it'll appear in this dropdown.</div>
             </div>
 
             <SectionTitle>Holdings</SectionTitle>
-            <div style={{ overflowX: "auto", marginBottom: 28 }}>
+            <div style={{ overflowX: "auto", marginBottom: 8 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ color: COLORS.textSecondary, textAlign: "right" }}>
                     <th style={{ textAlign: "left", padding: "6px 8px" }}>Ticker</th>
+                    <th style={{ textAlign: "left", padding: "6px 8px" }}>Name</th>
                     <th style={{ padding: "6px 8px" }}>Shares</th>
                     <th style={{ padding: "6px 8px" }}>Avg cost</th>
-                    <th style={{ padding: "6px 8px" }}>Price</th>
+                    <th style={{ padding: "6px 8px" }}>Current price</th>
+                    <th style={{ padding: "6px 8px" }}>Ann. div/sh</th>
                     <th style={{ padding: "6px 8px" }}>Cost basis</th>
                     <th style={{ padding: "6px 8px" }}>Market value</th>
+                    <th style={{ padding: "6px 8px" }}>Yield now</th>
                     <th style={{ padding: "6px 8px" }}>Yield on cost</th>
                     <th style={{ padding: "6px 8px" }}>Total return</th>
                     <th style={{ padding: "6px 8px" }}>Est. $/mo</th>
+                    <th style={{ padding: "6px 8px" }}>Payout %</th>
+                    <th style={{ padding: "6px 8px" }}>Safety</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {computed.rows.map((r) => (
-                    <tr key={r.id} style={{ borderTop: `0.5px solid ${COLORS.border}` }}>
-                      <td style={{ padding: "8px", fontFamily: "monospace", color: COLORS.orange }}>{r.id}</td>
-                      <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.shares} onChange={(v) => updateHolding(r.id, "shares", v)} width={85} /></td>
-                      <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.avgCost} onChange={(v) => updateHolding(r.id, "avgCost", v)} /></td>
-                      <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.price} onChange={(v) => updateHolding(r.id, "price", v)} /></td>
-                      <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>${fmt(r.costBasis, 0)}</td>
-                      <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>${fmt(r.marketValue, 0)}</td>
-                      <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: COLORS.green }}>{r.yieldOnCost !== null ? `${fmt(r.yieldOnCost)}%` : "n/a"}</td>
-                      <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: r.totalReturnPct >= 0 ? COLORS.green : COLORS.red }}>{r.totalReturnPct !== null ? `${r.totalReturn >= 0 ? "+" : "-"}$${fmt(Math.abs(r.totalReturn), 0)} (${fmt(r.totalReturnPct, 1)}%)` : "n/a"}</td>
-                      <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: COLORS.orange }}>${fmt(r.monthlyIncome)}</td>
-                    </tr>
-                  ))}
+                  {computed.rows.map((r) => {
+                    const flag = safetyFlag(r.payoutRatio);
+                    return (
+                      <tr key={r.uid} style={{ borderTop: `0.5px solid ${COLORS.border}` }}>
+                        <td style={{ padding: "8px" }}><TextCell value={r.id} onChange={(v) => updateHolding(r.uid, "id", v)} width={55} /></td>
+                        <td style={{ padding: "8px" }}><TextCell value={r.name} onChange={(v) => updateHolding(r.uid, "name", v)} width={140} /></td>
+                        <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.shares} onChange={(v) => updateHolding(r.uid, "shares", v)} width={85} /></td>
+                        <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.avgCost} onChange={(v) => updateHolding(r.uid, "avgCost", v)} /></td>
+                        <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.price} onChange={(v) => updateHolding(r.uid, "price", v)} /></td>
+                        <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.annualDiv} onChange={(v) => updateHolding(r.uid, "annualDiv", v)} /></td>
+                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>${fmt(r.costBasis, 0)}</td>
+                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>${fmt(r.marketValue, 0)}</td>
+                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>{r.currentYield !== null ? `${fmt(r.currentYield)}%` : "-"}</td>
+                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: COLORS.green }}>{r.yieldOnCost !== null ? `${fmt(r.yieldOnCost)}%` : "n/a"}</td>
+                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: r.totalReturnPct >= 0 ? COLORS.green : COLORS.red }}>{r.totalReturnPct !== null ? `${r.totalReturn >= 0 ? "+" : "-"}$${fmt(Math.abs(r.totalReturn), 0)} (${fmt(r.totalReturnPct, 1)}%)` : "n/a"}</td>
+                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: COLORS.orange }}>${fmt(r.monthlyIncome)}</td>
+                        <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.payoutRatio ?? ""} onChange={(v) => updateHolding(r.uid, "payoutRatio", v)} width={55} /></td>
+                        <td style={{ padding: "8px", textAlign: "center" }}><FlagBadge level={flag.level} text={flag.text} /></td>
+                        <td style={{ padding: "8px" }}><Button variant="ghost" onClick={() => removeHolding(r.uid)}>remove</Button></td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
+            <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 16 }}>Total return = (Market value - Cost basis) + Dividends received. "Dividends received" only counts from when you start using "mark received" on the calendar going forward.</div>
+            <div style={{ marginBottom: 28 }}><Button onClick={addHolding}>Add stock</Button></div>
+
+            <SectionTitle>Yield On Cost By Holding</SectionTitle>
+            <div style={{ height: 180, marginBottom: 28 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={yieldOnCostChart}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
+                  <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} unit="%" />
+                  <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => `${v}%`} />
+                  <Bar dataKey="yoc" name="Yield on cost" fill={COLORS.green} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            {yieldOnCostChart.length === 0 && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: -20, marginBottom: 20 }}>No holdings with a cost basis yet.</div>}
+
+            <SectionTitle sub="Excluded from income tracking -- reward shares / illiquid">Other Holdings</SectionTitle>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 28 }}>
+              <thead>
+                <tr style={{ color: COLORS.textSecondary, textAlign: "left" }}>
+                  <th style={{ padding: "6px 8px" }}>Ticker</th>
+                  <th style={{ padding: "6px 8px" }}>Name</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Shares</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Price</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data.otherHoldings || []).map((h) => (
+                  <tr key={h.uid} style={{ borderTop: `0.5px solid ${COLORS.border}` }}>
+                    <td style={{ padding: "8px", fontFamily: "monospace", color: COLORS.textMuted }}>{h.id}</td>
+                    <td style={{ padding: "8px", color: COLORS.textMuted }}>{h.name}</td>
+                    <td style={{ padding: "8px", textAlign: "right", color: COLORS.textMuted, fontFamily: "monospace" }}>{h.shares} sh</td>
+                    <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={h.price} onChange={(v) => updateOther(h.uid, "price", v)} /></td>
+                    <td style={{ padding: "8px", textAlign: "right", color: COLORS.textMuted, fontFamily: "monospace" }}>${fmt(h.shares * h.price)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
             <SectionTitle>Dry Powder</SectionTitle>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
@@ -344,16 +462,19 @@ export default function App() {
         {tab === "watchlist" && (
           <>
             <h1 style={{ ...H, fontSize: 34, margin: "0 0 20px" }}>WATCHLIST</h1>
-            <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 20 }}>Price history now builds automatically from real check-ins.</div>
+            <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 20 }}>Price history builds automatically from real check-ins. "Log price" lets you add a point yourself in between.</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(280px, 1fr))", gap: 16, marginBottom: 20 }}>
               {data.watchlist.map((w) => (
-                <div key={w.id} style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 16 }}>
+                <div key={w.uid} style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                     <div>
-                      <div style={{ fontFamily: "monospace", color: COLORS.orange, fontWeight: 600 }}>{w.id}</div>
-                      <TextCell value={w.name} onChange={(v) => updateWatch(w.id, "name", v)} width={160} />
+                      <TextCell value={w.id} onChange={(v) => updateWatch(w.uid, "id", v)} width={60} />
+                      <div style={{ marginTop: 4 }}><TextCell value={w.name} onChange={(v) => updateWatch(w.uid, "name", v)} width={160} /></div>
                     </div>
-                    <div>${fmt(w.price)}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ color: COLORS.textMuted }}>$</span>
+                      <EditableCell value={w.price} onChange={(v) => updateWatch(w.uid, "price", v)} width={70} />
+                    </div>
                   </div>
                   <div style={{ height: 100 }}>
                     {(w.priceHistory || []).length >= 2 ? (
@@ -365,36 +486,94 @@ export default function App() {
                           <Line type="monotone" dataKey="close" stroke={COLORS.orange} strokeWidth={2} dot={false} />
                         </LineChart>
                       </ResponsiveContainer>
-                    ) : <div style={{ fontSize: 11, color: COLORS.textMuted, textAlign: "center", paddingTop: 40 }}>Builds after first check-in</div>}
+                    ) : <div style={{ fontSize: 11, color: COLORS.textMuted, textAlign: "center", paddingTop: 40 }}>No price history yet -- log a snapshot or wait for the next check-in</div>}
                   </div>
-                  <Button variant="ghost" onClick={() => removeWatch(w.id)}>remove</Button>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                    <TextCell value={w.notes} onChange={(v) => updateWatch(w.uid, "notes", v)} width={140} />
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <Button onClick={() => logWatchPrice(w.uid)}>Log price</Button>
+                      <Button variant="ghost" onClick={() => removeWatch(w.uid)}>remove</Button>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
-            <Button variant="orange" onClick={addWatch}>Add ticker</Button>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <select value={watchPick} onChange={(e) => setWatchPick(e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 13, padding: "8px 10px", width: 220 }}>
+                <option value="">Select a ticker…</option>
+                {Object.entries(TICKER_LOOKUP).map(([t, n]) => <option key={t} value={t}>{t} -- {n}</option>)}
+                <option value="__custom__">Other (enter manually)</option>
+              </select>
+              <Button variant="orange" onClick={addWatch}>Add to watchlist</Button>
+            </div>
           </>
         )}
 
         {tab === "calendar" && (
           <>
             <h1 style={{ ...H, fontSize: 34, margin: "0 0 20px" }}>DIVIDEND CALENDAR</h1>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead><tr style={{ color: COLORS.textSecondary, textAlign: "left" }}><th style={{ padding: "6px 8px" }}>Ticker</th><th>Ex-date</th><th>Pay date</th><th style={{ textAlign: "right" }}>Per share</th><th></th><th></th></tr></thead>
+            <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 16 }}>Showing upcoming ex-dates and pay-dates only. Entries marked "est." are projected -- verify closer to the date. During check-ins, Claude adds real dividends.sg data here automatically.</div>
+
+            <SectionTitle>Expected Cash By Month</SectionTitle>
+            <div style={{ height: 180, marginBottom: 24 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={calendarChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
+                  <XAxis dataKey="month" tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
+                  <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
+                  <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => `$${v}`} />
+                  <Bar dataKey="cash" name="Expected cash" fill={COLORS.green} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            {calendarChartData.length === 0 && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: -12, marginBottom: 20 }}>No upcoming distributions to chart yet.</div>}
+
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 16 }}>
+              <thead>
+                <tr style={{ color: COLORS.textSecondary, textAlign: "left" }}>
+                  <th style={{ padding: "6px 8px" }}>Ticker</th><th style={{ padding: "6px 8px" }}>Ex-date</th><th style={{ padding: "6px 8px" }}>Pay date</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Per share</th><th style={{ padding: "6px 8px", textAlign: "right" }}>Expected cash</th><th></th><th></th>
+                </tr>
+              </thead>
               <tbody>
-                {upcomingCalendar.map((d, i) => {
+                {upcomingCalendar.map((d) => {
                   const h = data.holdings.find((x) => x.id === d.id);
                   const cash = h ? h.shares * d.perShare : 0;
                   return (
-                    <tr key={i} style={{ borderTop: `0.5px solid ${COLORS.border}` }}>
-                      <td style={{ padding: "8px", fontFamily: "monospace", color: COLORS.orange }}>{d.id}</td>
-                      <td style={{ padding: "8px" }}>{d.exDate}</td>
-                      <td style={{ padding: "8px" }}>{d.payDate}</td>
-                      <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>${fmt(d.perShare, 4)} (${fmt(cash)})</td>
+                    <tr key={d.uid} style={{ borderTop: `0.5px solid ${COLORS.border}` }}>
+                      <td style={{ padding: "8px" }}><TextCell value={d.id} onChange={(v) => updateCalendar(d.uid, "id", v)} width={60} /></td>
+                      <td style={{ padding: "8px" }}><input type="date" value={d.exDate} onChange={(e) => updateCalendar(d.uid, "exDate", e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 13, padding: "5px 7px" }} /></td>
+                      <td style={{ padding: "8px" }}><input type="date" value={d.payDate} onChange={(e) => updateCalendar(d.uid, "payDate", e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 13, padding: "5px 7px" }} /></td>
+                      <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={d.perShare} onChange={(v) => updateCalendar(d.uid, "perShare", v)} /></td>
+                      <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: COLORS.orange }}>${fmt(cash)}</td>
                       <td style={{ padding: "8px" }}>{d.estimated && <FlagBadge level="amber" text="est." />}</td>
-                      <td style={{ padding: "8px" }}><Button variant="ghost" onClick={() => markReceived(d)}>mark received</Button></td>
+                      <td style={{ padding: "8px", display: "flex", gap: 6 }}>
+                        <Button variant="ghost" onClick={() => markReceived(d)}>mark received</Button>
+                        <Button variant="ghost" onClick={() => removeCalendarEntry(d.uid)}>remove</Button>
+                      </td>
                     </tr>
                   );
                 })}
+                {upcomingCalendar.length === 0 && <tr><td colSpan={7} style={{ padding: "16px 8px", color: COLORS.textMuted, fontStyle: "italic" }}>No upcoming distributions logged.</td></tr>}
+              </tbody>
+            </table>
+            <div style={{ display: "flex", gap: 10, marginBottom: 28 }}>
+              <Button onClick={addCalendarEntry}>Add entry</Button>
+              <Button variant="ghost" onClick={clearEmptyCalendarEntries}>Clear empty entries ($0 per share)</Button>
+            </div>
+
+            <SectionTitle>Recently Received</SectionTitle>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead><tr style={{ color: COLORS.textSecondary, textAlign: "left" }}><th style={{ padding: "6px 8px" }}>Ticker</th><th style={{ padding: "6px 8px" }}>Received</th><th style={{ padding: "6px 8px", textAlign: "right" }}>Cash</th></tr></thead>
+              <tbody>
+                {(data.divHistory || []).length === 0 && <tr><td colSpan={3} style={{ padding: "12px 8px", color: COLORS.textMuted, fontStyle: "italic" }}>None yet -- use "mark received" above once a distribution is actually paid.</td></tr>}
+                {(data.divHistory || []).map((h, i) => (
+                  <tr key={i} style={{ borderTop: `0.5px solid ${COLORS.border}` }}>
+                    <td style={{ padding: "8px", fontFamily: "monospace", color: COLORS.orange }}>{h.id}</td>
+                    <td style={{ padding: "8px" }}>{h.date}</td>
+                    <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: COLORS.green }}>${fmt(h.cash)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </>
