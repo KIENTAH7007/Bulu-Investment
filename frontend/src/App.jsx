@@ -318,17 +318,50 @@ export default function App() {
               </ResponsiveContainer>
             </div>
 
-            <SectionTitle>Income By Holding</SectionTitle>
-            <div style={{ height: 220 }}>
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 28 }}>
+              <div style={{ flex: "1 1 300px", minWidth: 280 }}>
+                <SectionTitle>Income By Holding</SectionTitle>
+                <div style={{ height: 220 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={diversification} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${fmt(percent * 100, 0)}%`} labelLine={false}>
+                        {diversification.map((entry, i) => <Cell key={entry.name} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => `$${fmt(v)}/mo`} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div style={{ flex: "1 1 300px", minWidth: 280 }}>
+                <SectionTitle>Yield On Cost By Holding</SectionTitle>
+                <div style={{ height: 220 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={yieldOnCostChart}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
+                      <XAxis dataKey="name" tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
+                      <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} unit="%" />
+                      <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => `${v}%`} />
+                      <Bar dataKey="yoc" name="Yield on cost" fill={COLORS.green} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                {yieldOnCostChart.length === 0 && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>No holdings with a cost basis yet.</div>}
+              </div>
+            </div>
+
+            <SectionTitle>Expected Cash By Month</SectionTitle>
+            <div style={{ height: 200, marginBottom: 8 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={diversification} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${fmt(percent * 100, 0)}%`} labelLine={false}>
-                    {diversification.map((entry, i) => <Cell key={entry.name} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => `$${fmt(v)}/mo`} />
-                </PieChart>
+                <BarChart data={calendarChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
+                  <XAxis dataKey="month" tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
+                  <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
+                  <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => `$${v}`} />
+                  <Bar dataKey="cash" name="Expected cash" fill={COLORS.green} radius={[4, 4, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             </div>
+            {calendarChartData.length === 0 && <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 20 }}>No upcoming distributions to chart yet.</div>}
           </>
         )}
 
@@ -353,24 +386,21 @@ export default function App() {
             </div>
 
             <SectionTitle>Holdings</SectionTitle>
+            <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 10 }}>
+              "Payout %" is the dividend payout ratio -- the % of a company's earnings paid out as dividends. Not available from free price feeds, so type it in yourself when you know it (check the company's latest results). It drives the Safety badge: under 75% = Covered, 75-95% = Watch, 95%+ = Tight.
+            </div>
             <div style={{ overflowX: "auto", marginBottom: 8 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ color: COLORS.textSecondary, textAlign: "right" }}>
-                    <th style={{ textAlign: "left", padding: "6px 8px" }}>Ticker</th>
-                    <th style={{ textAlign: "left", padding: "6px 8px" }}>Name</th>
-                    <th style={{ padding: "6px 8px" }}>Shares</th>
-                    <th style={{ padding: "6px 8px" }}>Avg cost</th>
-                    <th style={{ padding: "6px 8px" }}>Current price</th>
-                    <th style={{ padding: "6px 8px" }}>Ann. div/sh</th>
-                    <th style={{ padding: "6px 8px" }}>Cost basis</th>
-                    <th style={{ padding: "6px 8px" }}>Market value</th>
-                    <th style={{ padding: "6px 8px" }}>Yield now</th>
-                    <th style={{ padding: "6px 8px" }}>Yield on cost</th>
+                    <th style={{ textAlign: "left", padding: "6px 8px" }}>Ticker / name</th>
+                    <th style={{ padding: "6px 8px" }}>Shares / avg cost</th>
+                    <th style={{ padding: "6px 8px" }}>Price / ann. div</th>
+                    <th style={{ padding: "6px 8px" }}>Value (mkt / cost)</th>
+                    <th style={{ padding: "6px 8px" }}>Yield (on cost / now)</th>
                     <th style={{ padding: "6px 8px" }}>Total return</th>
                     <th style={{ padding: "6px 8px" }}>Est. $/mo</th>
-                    <th style={{ padding: "6px 8px" }}>Payout %</th>
-                    <th style={{ padding: "6px 8px" }}>Safety</th>
+                    <th style={{ padding: "6px 8px" }}>Payout % / safety</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -379,20 +409,42 @@ export default function App() {
                     const flag = safetyFlag(r.payoutRatio);
                     return (
                       <tr key={r.uid} style={{ borderTop: `0.5px solid ${COLORS.border}` }}>
-                        <td style={{ padding: "8px" }}><TextCell value={r.id} onChange={(v) => updateHolding(r.uid, "id", v)} width={55} /></td>
-                        <td style={{ padding: "8px" }}><TextCell value={r.name} onChange={(v) => updateHolding(r.uid, "name", v)} width={140} /></td>
-                        <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.shares} onChange={(v) => updateHolding(r.uid, "shares", v)} width={85} /></td>
-                        <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.avgCost} onChange={(v) => updateHolding(r.uid, "avgCost", v)} /></td>
-                        <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.price} onChange={(v) => updateHolding(r.uid, "price", v)} /></td>
-                        <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.annualDiv} onChange={(v) => updateHolding(r.uid, "annualDiv", v)} /></td>
-                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>${fmt(r.costBasis, 0)}</td>
-                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>${fmt(r.marketValue, 0)}</td>
-                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>{r.currentYield !== null ? `${fmt(r.currentYield)}%` : "-"}</td>
-                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: COLORS.green }}>{r.yieldOnCost !== null ? `${fmt(r.yieldOnCost)}%` : "n/a"}</td>
-                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: r.totalReturnPct >= 0 ? COLORS.green : COLORS.red }}>{r.totalReturnPct !== null ? `${r.totalReturn >= 0 ? "+" : "-"}$${fmt(Math.abs(r.totalReturn), 0)} (${fmt(r.totalReturnPct, 1)}%)` : "n/a"}</td>
+                        <td style={{ padding: "8px" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                            <TextCell value={r.id} onChange={(v) => updateHolding(r.uid, "id", v)} width={100} />
+                            <TextCell value={r.name} onChange={(v) => updateHolding(r.uid, "name", v)} width={140} />
+                          </div>
+                        </td>
+                        <td style={{ padding: "8px", textAlign: "right" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
+                            <EditableCell value={r.shares} onChange={(v) => updateHolding(r.uid, "shares", v)} width={90} />
+                            <EditableCell value={r.avgCost} onChange={(v) => updateHolding(r.uid, "avgCost", v)} width={90} />
+                          </div>
+                        </td>
+                        <td style={{ padding: "8px", textAlign: "right" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
+                            <EditableCell value={r.price} onChange={(v) => updateHolding(r.uid, "price", v)} width={80} />
+                            <EditableCell value={r.annualDiv} onChange={(v) => updateHolding(r.uid, "annualDiv", v)} width={80} />
+                          </div>
+                        </td>
+                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>
+                          <div>${fmt(r.marketValue, 0)}</div>
+                          <div style={{ color: COLORS.textMuted, fontSize: 11 }}>${fmt(r.costBasis, 0)}</div>
+                        </td>
+                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>
+                          <div style={{ color: COLORS.green }}>{r.yieldOnCost !== null ? `${fmt(r.yieldOnCost)}%` : "n/a"}</div>
+                          <div style={{ color: COLORS.textMuted, fontSize: 11 }}>{r.currentYield !== null ? `${fmt(r.currentYield)}%` : "-"}</div>
+                        </td>
+                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: r.totalReturnPct >= 0 ? COLORS.green : COLORS.red }}>
+                          {r.totalReturnPct !== null ? <><div>{r.totalReturn >= 0 ? "+" : "-"}${fmt(Math.abs(r.totalReturn), 0)}</div><div style={{ fontSize: 11, opacity: 0.8 }}>({r.totalReturnPct >= 0 ? "+" : ""}{fmt(r.totalReturnPct, 1)}%)</div></> : "n/a"}
+                        </td>
                         <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: COLORS.orange }}>${fmt(r.monthlyIncome)}</td>
-                        <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={r.payoutRatio ?? ""} onChange={(v) => updateHolding(r.uid, "payoutRatio", v)} width={55} /></td>
-                        <td style={{ padding: "8px", textAlign: "center" }}><FlagBadge level={flag.level} text={flag.text} /></td>
+                        <td style={{ padding: "8px", textAlign: "right" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+                            <EditableCell value={r.payoutRatio ?? ""} onChange={(v) => updateHolding(r.uid, "payoutRatio", v)} width={55} />
+                            <FlagBadge level={flag.level} text={flag.text} />
+                          </div>
+                        </td>
                         <td style={{ padding: "8px" }}><Button variant="ghost" onClick={() => removeHolding(r.uid)}>remove</Button></td>
                       </tr>
                     );
@@ -402,20 +454,6 @@ export default function App() {
             </div>
             <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 16 }}>Total return = (Market value - Cost basis) + Dividends received. "Dividends received" only counts from when you start using "mark received" on the calendar going forward.</div>
             <div style={{ marginBottom: 28 }}><Button onClick={addHolding}>Add stock</Button></div>
-
-            <SectionTitle>Yield On Cost By Holding</SectionTitle>
-            <div style={{ height: 180, marginBottom: 28 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={yieldOnCostChart}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
-                  <XAxis dataKey="name" tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
-                  <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} unit="%" />
-                  <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => `${v}%`} />
-                  <Bar dataKey="yoc" name="Yield on cost" fill={COLORS.green} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            {yieldOnCostChart.length === 0 && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: -20, marginBottom: 20 }}>No holdings with a cost basis yet.</div>}
 
             <SectionTitle sub="Excluded from income tracking -- reward shares / illiquid">Other Holdings</SectionTitle>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 28 }}>
@@ -513,20 +551,6 @@ export default function App() {
           <>
             <h1 style={{ ...H, fontSize: 34, margin: "0 0 20px" }}>DIVIDEND CALENDAR</h1>
             <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 16 }}>Showing upcoming ex-dates and pay-dates only. Entries marked "est." are projected -- verify closer to the date. During check-ins, Claude adds real dividends.sg data here automatically.</div>
-
-            <SectionTitle>Expected Cash By Month</SectionTitle>
-            <div style={{ height: 180, marginBottom: 24 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={calendarChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
-                  <XAxis dataKey="month" tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
-                  <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
-                  <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => `$${v}`} />
-                  <Bar dataKey="cash" name="Expected cash" fill={COLORS.green} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            {calendarChartData.length === 0 && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: -12, marginBottom: 20 }}>No upcoming distributions to chart yet.</div>}
 
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 16 }}>
               <thead>

@@ -26,29 +26,53 @@ async function ensureHistory(holding) {
   return holding;
 }
 
+function addOneYear(isoDate) {
+  const d = new Date(isoDate);
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 async function refreshDividends(holding, data) {
   const result = await fetchDividendsSg(holding.id);
-  if (!result) return;
+  const grouped = result ? groupByPayDate(result.rows) : [];
 
-  if (result.ttmYield !== null) {
+  if (result && result.ttmYield !== null) {
     holding.yieldHistory = [...(holding.yieldHistory || []), result.ttmYield].slice(-40);
   }
 
-  const grouped = groupByPayDate(result.rows).slice(0, 4);
-  for (const div of grouped) {
+  const today = todayISO();
+  const futureGrouped = grouped.filter((g) => g.payDate >= today);
+  const pastGrouped = grouped.filter((g) => g.payDate < today).sort((a, b) => b.payDate.localeCompare(a.payDate));
+
+  // Real confirmed upcoming distributions from dividends.sg -- these win over any estimate
+  for (const div of futureGrouped) {
     const exists = data.dividendCalendar.some((c) => c.id === holding.id && c.exDate === div.exDate);
-    if (!exists && new Date(div.payDate) >= new Date(todayISO())) {
+    if (!exists) {
+      // A confirmed real date supersedes any estimate for roughly the same period
+      data.dividendCalendar = data.dividendCalendar.filter(
+        (c) => !(c.id === holding.id && c.estimated && Math.abs(new Date(c.payDate) - new Date(div.payDate)) < 45 * 86400000)
+      );
       data.dividendCalendar.push({
-        id: holding.id, exDate: div.exDate, payDate: div.payDate,
+        uid: `dsg-${holding.id}-${div.exDate}`, id: holding.id, exDate: div.exDate, payDate: div.payDate,
         perShare: div.amount, estimated: false, source: "dividends.sg (confirmed)",
       });
-      data.alertLog.unshift({ date: todayISO(), text: `Confirmed dividend found for ${holding.id}: ex ${div.exDate}, pay ${div.payDate}, $${div.amount}/share` });
+      data.alertLog.unshift({ date: today, text: `Confirmed dividend found for ${holding.id}: ex ${div.exDate}, pay ${div.payDate}, $${div.amount}/share` });
     }
   }
-  // Drop our own pattern-based estimate once the real one is confirmed
-  data.dividendCalendar = data.dividendCalendar.filter(
-    (c) => !(c.id === holding.id && c.estimated && grouped.some((g) => g.payDate.slice(0, 7) === c.payDate.slice(0, 7)))
-  );
+
+  // No confirmed or existing estimated upcoming entry? Generate one from last year's same
+  // distribution (ex/pay date + 1 year, same per-share amount as a placeholder) -- this is
+  // the "fill it in automatically, I'll revise when needed" behavior.
+  const hasUpcoming = data.dividendCalendar.some((c) => c.id === holding.id && c.payDate >= today);
+  if (!hasUpcoming && pastGrouped.length > 0) {
+    const last = pastGrouped[0];
+    const nextEx = addOneYear(last.exDate);
+    const nextPay = addOneYear(last.payDate);
+    data.dividendCalendar.push({
+      uid: `est-${holding.id}-${nextEx}`, id: holding.id, exDate: nextEx, payDate: nextPay,
+      perShare: last.amount, estimated: true, source: `pattern estimate from ${last.exDate}`,
+    });
+  }
 }
 
 function isDcaDay(data) {
@@ -82,7 +106,7 @@ export async function runCheckin(trigger = "scheduled") {
       holding.priceHistory = appendPricePoint(holding.priceHistory, priceInfo.asOf, priceInfo.price);
     }
 
-    if (holding.criteria.type === "reit") await refreshDividends(holding, data);
+    await refreshDividends(holding, data);
 
     let result;
     if (holding.criteria.type === "index-dca") result = evaluateIndexDca(holding, { isDcaDay: isDcaDay(data) });

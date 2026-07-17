@@ -55,6 +55,9 @@ function seedData() {
     ],
     dividendCalendar: [
       { id: "CLR", exDate: "2026-07-30", payDate: "2026-08-28", perShare: 0.02, estimated: true, source: "dividends.sg pattern" },
+      { id: "U11", exDate: "2026-10-23", payDate: "2026-11-06", perShare: 0.71, estimated: true, source: "pattern estimate" },
+      { id: "D05", exDate: "2026-08-10", payDate: "2026-08-19", perShare: 0.81, estimated: true, source: "pattern estimate" },
+      { id: "G3B", exDate: "2027-01-04", payDate: "2027-01-15", perShare: 0.0967, estimated: true, source: "pattern estimate" },
     ],
     alertLog: [],
     incomeHistory: [],
