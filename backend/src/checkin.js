@@ -37,7 +37,7 @@ async function refreshDividends(holding, data) {
   const grouped = result ? groupByPayDate(result.rows) : [];
 
   if (result && result.ttmYield !== null) {
-    holding.yieldHistory = [...(holding.yieldHistory || []), result.ttmYield].slice(-40);
+    holding.yieldHistory = [...(holding.yieldHistory || []).filter((y) => y.date !== todayISO()), { date: todayISO(), yield: result.ttmYield }].slice(-100);
   }
 
   const today = todayISO();

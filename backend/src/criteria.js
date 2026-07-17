@@ -45,8 +45,9 @@ export function evaluateIndexDca(holding, { isDcaDay }) {
 // price also below its shorter MA as confirmation (tier 2)
 export function evaluateReit(holding) {
   const { price, priceHistory, yieldHistory, criteria } = holding;
-  const avgYield = avgOfLastN(yieldHistory, criteria.yieldLookbackQuarters);
-  const currentYield = yieldHistory.length ? yieldHistory[yieldHistory.length - 1] : null;
+  const yieldValues = (yieldHistory || []).map((y) => (typeof y === "number" ? y : y.yield));
+  const avgYield = avgOfLastN(yieldValues, criteria.yieldLookbackQuarters);
+  const currentYield = yieldValues.length ? yieldValues[yieldValues.length - 1] : null;
   const ma = movingAverage(priceHistory, criteria.maPeriod);
   const notBreakingDown = maSlopeUp(priceHistory, criteria.maPeriod);
 

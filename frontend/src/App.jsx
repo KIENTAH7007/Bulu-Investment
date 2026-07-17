@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, ComposedChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine
 } from "recharts";
 
@@ -31,6 +31,29 @@ function fmt(n, d = 2) {
   return Number(n).toLocaleString("en-SG", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 function todayISO() { return new Date().toISOString().slice(0, 10); }
+
+function rollingMASeries(priceHistory, period) {
+  if (!priceHistory || priceHistory.length < 5) return [];
+  const step = priceHistory.length > 240 ? Math.floor(priceHistory.length / 240) : 1; // thin very long histories for chart performance
+  const out = [];
+  for (let i = 0; i < priceHistory.length; i += step) {
+    const windowStart = Math.max(0, i - period + 1);
+    const window = priceHistory.slice(windowStart, i + 1);
+    const ma = window.length >= Math.min(period, 20) ? window.reduce((s, p) => s + p.close, 0) / window.length : null;
+    out.push({ date: priceHistory[i].date, price: priceHistory[i].close, ma: ma !== null ? Math.round(ma * 1000) / 1000 : null });
+  }
+  return out;
+}
+
+function pbSeries(priceHistory, bookValuePerShare) {
+  if (!priceHistory || !bookValuePerShare) return [];
+  const step = priceHistory.length > 240 ? Math.floor(priceHistory.length / 240) : 1;
+  const out = [];
+  for (let i = 0; i < priceHistory.length; i += step) {
+    out.push({ date: priceHistory[i].date, pb: Math.round((priceHistory[i].close / bookValuePerShare) * 1000) / 1000 });
+  }
+  return out;
+}
 
 function Card({ label, value, sub, accent }) {
   return (
@@ -259,7 +282,7 @@ export default function App() {
   if (loading || !data || !computed) return <div style={{ color: COLORS.textSecondary, padding: 40, fontFamily: "sans-serif", background: COLORS.bg, minHeight: "100vh" }}>Loading dashboard…</div>;
 
   const progressPct = Math.min(100, (computed.totalMonthlyIncome / data.goal) * 100);
-  const navItems = [["dashboard", "Dashboard"], ["portfolio", "Portfolio"], ["watchlist", "Watchlist"], ["calendar", "Dividend Calendar"], ["journal", "Journal"]];
+  const navItems = [["dashboard", "Dashboard"], ["portfolio", "Portfolio"], ["gates", "Buy Criteria"], ["watchlist", "Watchlist"], ["calendar", "Dividend Calendar"], ["journal", "Journal"]];
 
   return (
     <div style={{ background: COLORS.bg, minHeight: "100vh", color: COLORS.textPrimary, fontFamily: "sans-serif", display: "flex" }}>
@@ -512,6 +535,116 @@ export default function App() {
               </div>
               <Card label="Total available" value={`$${fmt(computed.dryPowder)}`} accent={COLORS.orange} />
             </div>
+          </>
+        )}
+
+        {tab === "gates" && (
+          <>
+            <h1 style={{ ...H, fontSize: 34, margin: "0 0 8px" }}>BUY CRITERIA</h1>
+            <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 24 }}>What each holding's Tier 1 / Tier 2 gates are actually seeing right now. Updates with each check-in.</div>
+
+            {computed.rows.map((r) => {
+              const critType = r.criteria?.type;
+              const tier1 = r.alertState?.tier1;
+              const tier2 = r.alertState?.tier2;
+              const TierBadge = ({ met, label }) => (
+                <span style={{ background: met ? COLORS.greenSoft : COLORS.surfaceRaised, color: met ? COLORS.green : COLORS.textMuted, fontSize: 12, padding: "4px 12px", borderRadius: 12, fontWeight: 600 }}>{label}: {met ? "MET" : "not met"}</span>
+              );
+
+              let chart = null;
+              if (critType === "bank-pb") {
+                const series = pbSeries(r.priceHistory, r.bookValuePerShare);
+                const avg = r.criteria.pbHistoricalAvg, bandLow = r.criteria.pbHistoricalBandLow;
+                chart = (
+                  <div style={{ height: 220 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={series}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
+                        <XAxis dataKey="date" tick={{ fill: COLORS.textMuted, fontSize: 11 }} minTickGap={40} />
+                        <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} domain={["auto", "auto"]} />
+                        <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} />
+                        {bandLow != null && <ReferenceLine y={bandLow} stroke={COLORS.red} strokeDasharray="4 4" label={{ value: "Cheap band", fill: COLORS.red, fontSize: 11, position: "insideBottomLeft" }} />}
+                        {avg != null && <ReferenceLine y={avg} stroke={COLORS.amber} strokeDasharray="4 4" label={{ value: "5yr average", fill: COLORS.amber, fontSize: 11, position: "insideTopLeft" }} />}
+                        <Line type="monotone" dataKey="pb" name="P/B ratio" stroke={COLORS.orange} strokeWidth={2} dot={false} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                );
+              } else if (critType === "reit") {
+                const yieldSeries = (r.yieldHistory || []).map((y) => (typeof y === "number" ? { date: "", yield: y } : y));
+                const maSeries = rollingMASeries(r.priceHistory, r.criteria.maPeriod);
+                const avgYield = yieldSeries.length ? yieldSeries.slice(-r.criteria.yieldLookbackQuarters).reduce((s, y) => s + y.yield, 0) / Math.min(yieldSeries.length, r.criteria.yieldLookbackQuarters) : null;
+                chart = (
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 260px", height: 200 }}>
+                      <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 4 }}>Yield vs {r.criteria.yieldLookbackQuarters}-quarter average</div>
+                      <ResponsiveContainer width="100%" height="90%">
+                        <LineChart data={yieldSeries}>
+                          <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
+                          <XAxis dataKey="date" tick={{ fill: COLORS.textMuted, fontSize: 11 }} hide />
+                          <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} unit="%" domain={["auto", "auto"]} />
+                          <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} />
+                          {avgYield != null && <ReferenceLine y={avgYield} stroke={COLORS.amber} strokeDasharray="4 4" label={{ value: "avg", fill: COLORS.amber, fontSize: 11 }} />}
+                          <Line type="monotone" dataKey="yield" name="TTM yield" stroke={COLORS.green} strokeWidth={2} dot={{ r: 3 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                      {yieldSeries.length < 2 && <div style={{ fontSize: 11, color: COLORS.textMuted }}>Builds a point each check-in -- needs more history yet.</div>}
+                    </div>
+                    <div style={{ flex: "1 1 260px", height: 200 }}>
+                      <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 4 }}>Price vs {r.criteria.maPeriod}-day average</div>
+                      <ResponsiveContainer width="100%" height="90%">
+                        <LineChart data={maSeries}>
+                          <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
+                          <XAxis dataKey="date" tick={{ fill: COLORS.textMuted, fontSize: 11 }} hide />
+                          <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} domain={["auto", "auto"]} />
+                          <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} />
+                          <Line type="monotone" dataKey="price" name="Price" stroke={COLORS.orange} strokeWidth={2} dot={false} />
+                          <Line type="monotone" dataKey="ma" name={`${r.criteria.maPeriod}d avg`} stroke={COLORS.textMuted} strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                );
+              } else if (critType === "index-dca") {
+                const maSeries = rollingMASeries(r.priceHistory, r.criteria.maPeriod);
+                chart = (
+                  <div style={{ height: 220 }}>
+                    <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 4 }}>Price vs {r.criteria.maPeriod}-day average -- bonus buy triggers {r.criteria.bonusDipPct}%+ below</div>
+                    <ResponsiveContainer width="100%" height="90%">
+                      <LineChart data={maSeries}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
+                        <XAxis dataKey="date" tick={{ fill: COLORS.textMuted, fontSize: 11 }} minTickGap={40} />
+                        <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} domain={["auto", "auto"]} />
+                        <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} />
+                        <Line type="monotone" dataKey="price" name="Price" stroke={COLORS.orange} strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="ma" name={`${r.criteria.maPeriod}d avg`} stroke={COLORS.textMuted} strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                );
+              }
+
+              return (
+                <div key={r.uid} style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 18, marginBottom: 20 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
+                    <div>
+                      <span style={{ fontFamily: "monospace", color: COLORS.orange, fontWeight: 600, fontSize: 15 }}>{r.id}</span>
+                      <span style={{ color: COLORS.textSecondary, marginLeft: 8, fontSize: 13 }}>{r.name}</span>
+                    </div>
+                    {critType ? (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <TierBadge met={tier1} label={r.criteria.type === "index-dca" ? "DCA" : "Tier 1"} />
+                        <TierBadge met={tier2} label="Tier 2" />
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 12, color: COLORS.textMuted, fontStyle: "italic" }}>No buy criteria configured for this holding</span>
+                    )}
+                  </div>
+                  {chart}
+                  {(!r.priceHistory || r.priceHistory.length < 5) && <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 8 }}>Not enough price history yet -- builds automatically over the first few check-ins.</div>}
+                </div>
+              );
+            })}
           </>
         )}
 
