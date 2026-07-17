@@ -34,6 +34,13 @@ function addOneYear(isoDate) {
 
 async function refreshDividends(holding, data) {
   const result = await fetchDividendsSg(holding.id);
+  if (!result) {
+    console.warn(`[${holding.id}] dividends.sg fetch returned nothing -- check network/page structure`);
+  } else if (result.ttmYield === null) {
+    console.warn(`[${holding.id}] dividends.sg fetched OK but TTM yield text wasn't found on the page -- site markup may have changed`);
+  } else {
+    console.log(`[${holding.id}] TTM yield scraped: ${result.ttmYield}%`);
+  }
   const grouped = result ? groupByPayDate(result.rows) : [];
 
   if (result && result.ttmYield !== null) {

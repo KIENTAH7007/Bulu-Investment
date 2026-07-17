@@ -45,6 +45,20 @@ function rollingMASeries(priceHistory, period) {
   return out;
 }
 
+function describeGates(r) {
+  const c = r.criteria || {};
+  if (c.type === "index-dca") {
+    return { tier1: "Scheduled DCA date reached", tier2: `Price ${c.bonusDipPct}%+ below its ${c.maPeriod}-day average`, purchase: "DCA (T1) / Bonus lump sum (T2)" };
+  }
+  if (c.type === "reit") {
+    return { tier1: `Yield above its own ${c.yieldLookbackQuarters}-quarter average, no structural breakdown`, tier2: `All of Tier 1, plus price also below its ${c.maPeriod}-day average`, purchase: "Lump sum (both tiers)" };
+  }
+  if (c.type === "bank-pb") {
+    return { tier1: `P/B below its own ${c.pbLookbackYears}-year average (${c.pbHistoricalAvg ?? "?"}x), trend still healthy`, tier2: `P/B has dropped into the cheap band (<= ${c.pbHistoricalBandLow ?? "?"}x)`, purchase: "Lump sum (both tiers)" };
+  }
+  return { tier1: "Not configured", tier2: "Not configured", purchase: "-" };
+}
+
 function pbSeries(priceHistory, bookValuePerShare) {
   if (!priceHistory || !bookValuePerShare) return [];
   const step = priceHistory.length > 240 ? Math.floor(priceHistory.length / 240) : 1;
@@ -542,6 +556,34 @@ export default function App() {
           <>
             <h1 style={{ ...H, fontSize: 34, margin: "0 0 8px" }}>BUY CRITERIA</h1>
             <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 24 }}>What each holding's Tier 1 / Tier 2 gates are actually seeing right now. Updates with each check-in.</div>
+
+            <SectionTitle>Gate Reference</SectionTitle>
+            <div style={{ overflowX: "auto", marginBottom: 32 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ color: COLORS.textSecondary, textAlign: "left" }}>
+                    <th style={{ padding: "6px 8px" }}>Holding</th>
+                    <th style={{ padding: "6px 8px" }}>Tier 1 (moderate)</th>
+                    <th style={{ padding: "6px 8px" }}>Tier 2 (confirmed / stronger)</th>
+                    <th style={{ padding: "6px 8px" }}>Purchase type</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {computed.rows.map((r) => {
+                    const g = describeGates(r);
+                    return (
+                      <tr key={r.uid} style={{ borderTop: `0.5px solid ${COLORS.border}` }}>
+                        <td style={{ padding: "8px", fontFamily: "monospace", color: COLORS.orange, verticalAlign: "top" }}>{r.id}</td>
+                        <td style={{ padding: "8px", verticalAlign: "top" }}>{g.tier1}</td>
+                        <td style={{ padding: "8px", verticalAlign: "top" }}>{g.tier2}</td>
+                        <td style={{ padding: "8px", verticalAlign: "top", color: COLORS.textMuted }}>{g.purchase}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 28 }}>Generated live from each holding's actual configured thresholds, so it can't drift out of sync with what's really being checked. (There's no in-app editor for these yet -- ask me to adjust a threshold and I'll patch it.)</div>
 
             {computed.rows.map((r) => {
               const critType = r.criteria?.type;
