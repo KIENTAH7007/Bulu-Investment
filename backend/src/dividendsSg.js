@@ -20,12 +20,16 @@ export async function fetchDividendsSg(ticker) {
     const rows = [];
     $("table tr").each((_, el) => {
       const cells = $(el).find("td");
-      if (cells.length < 6) return;
-      const amountText = $(cells[3]).text().trim().replace("SGD", "").trim();
-      const exDate = $(cells[4]).text().trim();
-      const payDate = $(cells[5]).text().trim();
+      const n = cells.length;
+      if (n < 4) return; // need at least Amount, Ex Date, Pay Date, Particulars
+      // Index from the RIGHT: the site uses rowspan for Year/Yield/Total on the first
+      // row of each group, so continuation rows have fewer leading columns -- but the
+      // last 4 columns (Amount, Ex Date, Pay Date, Particulars) are always present.
+      const amountText = $(cells[n - 4]).text().trim().replace("SGD", "").trim();
+      const exDate = $(cells[n - 3]).text().trim();
+      const payDate = $(cells[n - 2]).text().trim();
       const amount = parseFloat(amountText);
-      if (!isNaN(amount) && /^\d{4}-\d{2}-\d{2}$/.test(exDate)) {
+      if (!isNaN(amount) && /^\d{4}-\d{2}-\d{2}$/.test(exDate) && /^\d{4}-\d{2}-\d{2}$/.test(payDate)) {
         rows.push({ amount, exDate, payDate });
       }
     });

@@ -67,13 +67,20 @@ async function refreshDividends(holding, data) {
   // Jan -> naive +1yr gives next Jan, skipping right over the correct upcoming Jul
   // date). Instead: project every past entry forward by exactly 1 year, keep only the
   // ones that land in the future, and take the earliest of those.
-  const hasUpcoming = data.dividendCalendar.some((c) => c.id === holding.id && c.payDate >= today);
-  if (!hasUpcoming && pastGrouped.length > 0) {
+  //
+  // Only a CONFIRMED entry blocks re-estimation. An existing *estimated* entry gets
+  // recalculated fresh every check-in -- otherwise a wrong estimate (e.g. from a
+  // scraper bug that's since been fixed) would stay stuck forever, since "there's
+  // already an upcoming entry" would look satisfied even though it's wrong.
+  const hasConfirmedUpcoming = data.dividendCalendar.some((c) => c.id === holding.id && c.payDate >= today && !c.estimated);
+  if (!hasConfirmedUpcoming && pastGrouped.length > 0) {
     const candidates = pastGrouped
       .map((g) => ({ exDate: addOneYear(g.exDate), payDate: addOneYear(g.payDate), amount: g.amount }))
       .filter((c) => c.payDate >= today)
       .sort((a, b) => a.payDate.localeCompare(b.payDate));
     const best = candidates[0] || { exDate: addOneYear(pastGrouped[0].exDate), payDate: addOneYear(pastGrouped[0].payDate), amount: pastGrouped[0].amount };
+    // Replace any existing (stale) estimated upcoming entry for this holding with the freshly computed one
+    data.dividendCalendar = data.dividendCalendar.filter((c) => !(c.id === holding.id && c.estimated && c.payDate >= today));
     data.dividendCalendar.push({
       uid: `est-${holding.id}-${best.exDate}`, id: holding.id, exDate: best.exDate, payDate: best.payDate,
       perShare: best.amount, estimated: true, source: `pattern estimate from last year's same cycle`,
