@@ -60,17 +60,23 @@ async function refreshDividends(holding, data) {
     }
   }
 
-  // No confirmed or existing estimated upcoming entry? Generate one from last year's same
-  // distribution (ex/pay date + 1 year, same per-share amount as a placeholder) -- this is
-  // the "fill it in automatically, I'll revise when needed" behavior.
+  // No confirmed or existing estimated upcoming entry? Estimate one from history.
+  // Important: don't just take the single most-recent past entry and add a year --
+  // for a semi-annual/quarterly payer, "most recent past" might be the WRONG half of
+  // the cycle depending on where today falls (e.g. today is Jul, most recent past is
+  // Jan -> naive +1yr gives next Jan, skipping right over the correct upcoming Jul
+  // date). Instead: project every past entry forward by exactly 1 year, keep only the
+  // ones that land in the future, and take the earliest of those.
   const hasUpcoming = data.dividendCalendar.some((c) => c.id === holding.id && c.payDate >= today);
   if (!hasUpcoming && pastGrouped.length > 0) {
-    const last = pastGrouped[0];
-    const nextEx = addOneYear(last.exDate);
-    const nextPay = addOneYear(last.payDate);
+    const candidates = pastGrouped
+      .map((g) => ({ exDate: addOneYear(g.exDate), payDate: addOneYear(g.payDate), amount: g.amount }))
+      .filter((c) => c.payDate >= today)
+      .sort((a, b) => a.payDate.localeCompare(b.payDate));
+    const best = candidates[0] || { exDate: addOneYear(pastGrouped[0].exDate), payDate: addOneYear(pastGrouped[0].payDate), amount: pastGrouped[0].amount };
     data.dividendCalendar.push({
-      uid: `est-${holding.id}-${nextEx}`, id: holding.id, exDate: nextEx, payDate: nextPay,
-      perShare: last.amount, estimated: true, source: `pattern estimate from ${last.exDate}`,
+      uid: `est-${holding.id}-${best.exDate}`, id: holding.id, exDate: best.exDate, payDate: best.payDate,
+      perShare: best.amount, estimated: true, source: `pattern estimate from last year's same cycle`,
     });
   }
 }
@@ -108,11 +114,12 @@ export async function runCheckin(trigger = "scheduled") {
 
     await refreshDividends(holding, data);
 
-    let result;
-    if (holding.criteria.type === "index-dca") result = evaluateIndexDca(holding, { isDcaDay: isDcaDay(data) });
-    else if (holding.criteria.type === "reit") result = evaluateReit(holding);
-    else if (holding.criteria.type === "bank-pb") result = evaluateBankPb(holding);
-    else continue;
+    const critType = holding.criteria?.type;
+    let result = null;
+    if (critType === "index-dca") result = evaluateIndexDca(holding, { isDcaDay: isDcaDay(data) });
+    else if (critType === "reit") result = evaluateReit(holding);
+    else if (critType === "bank-pb") result = evaluateBankPb(holding);
+    if (!result) continue; // no buy-criteria set for this holding yet -- price/dividends were still refreshed above
 
     const rsiValue = rsi(holding.priceHistory);
     const prevState = holding.alertState || { tier1: false, tier2: false };

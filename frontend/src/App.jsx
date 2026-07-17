@@ -35,9 +35,9 @@ function todayISO() { return new Date().toISOString().slice(0, 10); }
 function Card({ label, value, sub, accent }) {
   return (
     <div style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: "16px 18px", flex: "1 1 160px", minWidth: 150 }}>
-      <div style={{ fontSize: 11, color: COLORS.textSecondary, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
       <div style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 500, color: accent || COLORS.textPrimary }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
@@ -45,26 +45,26 @@ function SectionTitle({ children, sub }) {
   return (
     <div style={{ marginBottom: 14 }}>
       <h2 style={{ ...H, fontWeight: 400, fontSize: 22, color: COLORS.textPrimary, margin: 0, textTransform: "uppercase" }}>{children}</h2>
-      {sub && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }
 function EditableCell({ value, onChange, width = 70 }) {
   return <input type="number" step="any" value={value} onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-    style={{ width, background: "transparent", border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontFamily: "monospace", fontSize: 13, padding: "5px 7px", textAlign: "right" }} />;
+    style={{ width, background: "transparent", border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontFamily: "monospace", fontSize: 14, padding: "5px 7px", textAlign: "right" }} />;
 }
 function TextCell({ value, onChange, width = 110 }) {
   return <input type="text" value={value} onChange={(e) => onChange(e.target.value)}
-    style={{ width, background: "transparent", border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 13, padding: "5px 7px" }} />;
+    style={{ width, background: "transparent", border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 14, padding: "5px 7px" }} />;
 }
 function Field({ label, value, onChange, width = 100, prefix }) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: COLORS.textSecondary }}>
+    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, color: COLORS.textSecondary }}>
       {label}
       <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
         {prefix && <span style={{ color: COLORS.textMuted }}>{prefix}</span>}
         <input type="number" value={value} onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-          style={{ width, background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontFamily: "monospace", fontSize: 13, padding: "6px 8px", textAlign: "right" }} />
+          style={{ width, background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontFamily: "monospace", fontSize: 14, padding: "6px 8px", textAlign: "right" }} />
       </span>
     </label>
   );
@@ -75,12 +75,12 @@ function Button({ children, onClick, variant = "default", disabled }) {
     orange: { background: COLORS.orange, border: `0.5px solid ${COLORS.orange}`, color: COLORS.sidebar, fontWeight: 600 },
     ghost: { background: "none", border: "none", color: COLORS.textMuted },
   };
-  return <button onClick={onClick} disabled={disabled} style={{ ...styles[variant], borderRadius: 8, padding: "8px 16px", fontSize: 13, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1 }}>{children}</button>;
+  return <button onClick={onClick} disabled={disabled} style={{ ...styles[variant], borderRadius: 8, padding: "8px 16px", fontSize: 14, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1 }}>{children}</button>;
 }
 function FlagBadge({ level, text }) {
   const map = { green: { bg: COLORS.greenSoft, color: COLORS.green }, amber: { bg: COLORS.amberSoft, color: COLORS.amber }, red: { bg: COLORS.redSoft, color: COLORS.red }, none: { bg: COLORS.surfaceRaised, color: COLORS.textMuted } };
   const s = map[level] || map.none;
-  return <span style={{ background: s.bg, color: s.color, fontSize: 11, padding: "3px 9px", borderRadius: 12, fontWeight: 600 }}>{text}</span>;
+  return <span style={{ background: s.bg, color: s.color, fontSize: 13, padding: "3px 9px", borderRadius: 12, fontWeight: 600 }}>{text}</span>;
 }
 
 export default function App() {
@@ -95,6 +95,7 @@ export default function App() {
   const [buyPrice, setBuyPrice] = useState("");
   const [checkinRunning, setCheckinRunning] = useState(false);
   const [watchPick, setWatchPick] = useState("");
+  const [newStockPick, setNewStockPick] = useState("");
 
   useEffect(() => {
     fetch("/api/data").then((r) => r.json()).then((d) => {
@@ -133,7 +134,17 @@ export default function App() {
 
   const updateHolding = (uid, field, value) => save({ ...data, holdings: data.holdings.map((h) => h.uid === uid ? { ...h, [field]: value } : h) });
   const removeHolding = (uid) => save({ ...data, holdings: data.holdings.filter((h) => h.uid !== uid) });
-  const addHolding = () => save({ ...data, holdings: [...data.holdings, { uid: `h-new-${Date.now()}`, id: "NEW", name: "New stock", shares: 0, avgCost: 0, price: 0, annualDiv: 0, divReceived: 0, payoutRatio: null, priceHistory: [], yieldHistory: [] }] });
+  const addHolding = () => {
+    if (!newStockPick) return;
+    const uid = `h-new-${Date.now()}`;
+    const base = { uid, shares: 0, avgCost: 0, price: 0, annualDiv: 0, divReceived: 0, payoutRatio: null, priceHistory: [], yieldHistory: [], criteria: { type: null } };
+    if (newStockPick === "__custom__") {
+      save({ ...data, holdings: [...data.holdings, { ...base, id: "NEW", name: "New stock" }] });
+    } else {
+      save({ ...data, holdings: [...data.holdings, { ...base, id: newStockPick, name: TICKER_LOOKUP[newStockPick] || newStockPick }] });
+    }
+    setNewStockPick("");
+  };
   const updateOther = (uid, field, value) => save({ ...data, otherHoldings: data.otherHoldings.map((h) => h.uid === uid ? { ...h, [field]: value } : h) });
   const updateWatch = (uid, field, value) => save({ ...data, watchlist: data.watchlist.map((w) => w.uid === uid ? { ...w, [field]: value } : w) });
   const removeWatch = (uid) => save({ ...data, watchlist: data.watchlist.filter((w) => w.uid !== uid) });
@@ -256,13 +267,13 @@ export default function App() {
         <div onClick={() => setSidebarOpen(!sidebarOpen)} style={{ cursor: "pointer", fontSize: 18, color: COLORS.textSecondary, marginBottom: 18, padding: "0 4px" }}>☰</div>
         {sidebarOpen && (
           <>
-            <div style={{ ...H, fontSize: 15, color: COLORS.orange, marginBottom: 2, padding: "0 8px" }}>BULU FAMILY</div>
+            <div style={{ ...H, fontSize: 16, color: COLORS.orange, marginBottom: 2, padding: "0 8px" }}>BULU FAMILY</div>
             <div style={{ ...H, fontSize: 22, marginBottom: 8, padding: "0 8px", color: COLORS.cream }}>INVESTMENT</div>
             <div style={{ fontSize: 10, color: COLORS.textMuted, padding: "0 8px", marginBottom: 18 }}>
               {data.lastCheckin ? `Last check-in: ${new Date(data.lastCheckin.at).toLocaleString("en-SG")}` : "No check-in yet"}
             </div>
             {navItems.map(([key, label]) => (
-              <div key={key} onClick={() => setTab(key)} style={{ padding: "10px 10px", borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: "pointer", marginBottom: 3, background: tab === key ? COLORS.orange : "transparent", color: tab === key ? COLORS.sidebar : COLORS.textSecondary }}>{label}</div>
+              <div key={key} onClick={() => setTab(key)} style={{ padding: "10px 10px", borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: "pointer", marginBottom: 3, background: tab === key ? COLORS.orange : "transparent", color: tab === key ? COLORS.sidebar : COLORS.textSecondary }}>{label}</div>
             ))}
             <div style={{ marginTop: 16, padding: "0 8px" }}>
               <Button onClick={runCheckinNow} disabled={checkinRunning}>{checkinRunning ? "Running…" : "Run check-in now"}</Button>
@@ -272,16 +283,16 @@ export default function App() {
       </div>
 
       <div style={{ flex: 1, padding: "24px 28px 40px", minWidth: 0 }}>
-        {saving && <div style={{ position: "fixed", top: 12, right: 12, fontSize: 11, color: COLORS.textMuted }}>Saving…</div>}
+        {saving && <div style={{ position: "fixed", top: 12, right: 12, fontSize: 13, color: COLORS.textMuted }}>Saving…</div>}
 
         {tab === "dashboard" && (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
               <h1 style={{ ...H, fontSize: 34, margin: 0 }}>DASHBOARD</h1>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, color: COLORS.textSecondary }}>Monthly goal</span>
+                <span style={{ fontSize: 14, color: COLORS.textSecondary }}>Monthly goal</span>
                 <input type="number" value={data.goal} onChange={(e) => save({ ...data, goal: parseFloat(e.target.value) || 0 })}
-                  style={{ width: 90, background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.orange}`, borderRadius: 8, color: COLORS.orange, fontFamily: "monospace", fontSize: 15, padding: "7px 10px", textAlign: "right" }} />
+                  style={{ width: 90, background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.orange}`, borderRadius: 8, color: COLORS.orange, fontFamily: "monospace", fontSize: 16, padding: "7px 10px", textAlign: "right" }} />
               </div>
             </div>
 
@@ -296,10 +307,10 @@ export default function App() {
               <div style={{ height: 10, background: COLORS.surfaceRaised, borderRadius: 5, overflow: "hidden", border: `0.5px solid ${COLORS.border}` }}>
                 <div style={{ height: "100%", width: `${progressPct}%`, background: COLORS.orange }} />
               </div>
-              <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 6 }}>${fmt(computed.totalMonthlyIncome)} of ${fmt(data.goal, 0)} monthly income goal</div>
+              <div style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 6 }}>${fmt(computed.totalMonthlyIncome)} of ${fmt(data.goal, 0)} monthly income goal</div>
             </div>
 
-            <div style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 18, marginBottom: 28, fontSize: 13, color: COLORS.textMuted }}>
+            <div style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 18, marginBottom: 28, fontSize: 14, color: COLORS.textMuted }}>
               AI advisor and dividend safety-read will appear here once the Anthropic API key is configured (see README).
             </div>
 
@@ -309,9 +320,9 @@ export default function App() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.incomeHistory || []}>
                   <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
-                  <XAxis dataKey="month" tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
-                  <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
-                  <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} />
+                  <XAxis dataKey="month" tick={{ fill: COLORS.textMuted, fontSize: 13 }} />
+                  <YAxis tick={{ fill: COLORS.textMuted, fontSize: 13 }} />
+                  <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 13 }} />
                   <ReferenceLine y={data.goal} stroke={COLORS.red} strokeDasharray="4 4" />
                   <Bar dataKey="value" name="Monthly income" fill={COLORS.orange} radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -327,7 +338,7 @@ export default function App() {
                       <Pie data={diversification} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${fmt(percent * 100, 0)}%`} labelLine={false}>
                         {diversification.map((entry, i) => <Cell key={entry.name} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                       </Pie>
-                      <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => `$${fmt(v)}/mo`} />
+                      <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 13 }} formatter={(v) => `$${fmt(v)}/mo`} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -338,14 +349,14 @@ export default function App() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={yieldOnCostChart}>
                       <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
-                      <XAxis dataKey="name" tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
-                      <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} unit="%" />
-                      <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => `${v}%`} />
+                      <XAxis dataKey="name" tick={{ fill: COLORS.textMuted, fontSize: 13 }} />
+                      <YAxis tick={{ fill: COLORS.textMuted, fontSize: 13 }} unit="%" />
+                      <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 13 }} formatter={(v) => `${v}%`} />
                       <Bar dataKey="yoc" name="Yield on cost" fill={COLORS.green} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                {yieldOnCostChart.length === 0 && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>No holdings with a cost basis yet.</div>}
+                {yieldOnCostChart.length === 0 && <div style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 4 }}>No holdings with a cost basis yet.</div>}
               </div>
             </div>
 
@@ -354,14 +365,14 @@ export default function App() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={calendarChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
-                  <XAxis dataKey="month" tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
-                  <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} />
-                  <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} formatter={(v) => `$${v}`} />
+                  <XAxis dataKey="month" tick={{ fill: COLORS.textMuted, fontSize: 13 }} />
+                  <YAxis tick={{ fill: COLORS.textMuted, fontSize: 13 }} />
+                  <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 13 }} formatter={(v) => `$${v}`} />
                   <Bar dataKey="cash" name="Expected cash" fill={COLORS.green} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            {calendarChartData.length === 0 && <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 20 }}>No upcoming distributions to chart yet.</div>}
+            {calendarChartData.length === 0 && <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 20 }}>No upcoming distributions to chart yet.</div>}
           </>
         )}
 
@@ -369,11 +380,11 @@ export default function App() {
           <>
             <h1 style={{ ...H, fontSize: 34, margin: "0 0 20px" }}>PORTFOLIO</h1>
             <div style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 16, marginBottom: 24 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Record a purchase</div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Record a purchase</div>
               <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: COLORS.textSecondary }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, color: COLORS.textSecondary }}>
                   Stock
-                  <select value={buyTicker} onChange={(e) => setBuyTicker(e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 13, padding: "7px 8px", width: 120 }}>
+                  <select value={buyTicker} onChange={(e) => setBuyTicker(e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 14, padding: "7px 8px", width: 120 }}>
                     <option value="">Select…</option>
                     {data.holdings.map((h) => <option key={h.uid} value={h.uid}>{h.id}</option>)}
                   </select>
@@ -382,15 +393,15 @@ export default function App() {
                 <Field label="Price paid" value={buyPrice} onChange={setBuyPrice} width={90} prefix="$" />
                 <Button variant="orange" onClick={recordPurchase}>Record purchase</Button>
               </div>
-              <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 10 }}>Don't see the stock you bought? Add it below in the holdings table first, then it'll appear in this dropdown.</div>
+              <div style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 10 }}>Don't see the stock you bought? Add it below in the holdings table first, then it'll appear in this dropdown.</div>
             </div>
 
             <SectionTitle>Holdings</SectionTitle>
-            <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 10 }}>
+            <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 10 }}>
               "Payout %" is the dividend payout ratio -- the % of a company's earnings paid out as dividends. Not available from free price feeds, so type it in yourself when you know it (check the company's latest results). It drives the Safety badge: under 75% = Covered, 75-95% = Watch, 95%+ = Tight.
             </div>
             <div style={{ overflowX: "auto", marginBottom: 8 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                 <thead>
                   <tr style={{ color: COLORS.textSecondary, textAlign: "right" }}>
                     <th style={{ textAlign: "left", padding: "6px 8px" }}>Ticker / name</th>
@@ -429,14 +440,14 @@ export default function App() {
                         </td>
                         <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>
                           <div>${fmt(r.marketValue, 0)}</div>
-                          <div style={{ color: COLORS.textMuted, fontSize: 11 }}>${fmt(r.costBasis, 0)}</div>
+                          <div style={{ color: COLORS.textMuted, fontSize: 13 }}>${fmt(r.costBasis, 0)}</div>
                         </td>
                         <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>
                           <div style={{ color: COLORS.green }}>{r.yieldOnCost !== null ? `${fmt(r.yieldOnCost)}%` : "n/a"}</div>
-                          <div style={{ color: COLORS.textMuted, fontSize: 11 }}>{r.currentYield !== null ? `${fmt(r.currentYield)}%` : "-"}</div>
+                          <div style={{ color: COLORS.textMuted, fontSize: 13 }}>{r.currentYield !== null ? `${fmt(r.currentYield)}%` : "-"}</div>
                         </td>
                         <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: r.totalReturnPct >= 0 ? COLORS.green : COLORS.red }}>
-                          {r.totalReturnPct !== null ? <><div>{r.totalReturn >= 0 ? "+" : "-"}${fmt(Math.abs(r.totalReturn), 0)}</div><div style={{ fontSize: 11, opacity: 0.8 }}>({r.totalReturnPct >= 0 ? "+" : ""}{fmt(r.totalReturnPct, 1)}%)</div></> : "n/a"}
+                          {r.totalReturnPct !== null ? <><div>{r.totalReturn >= 0 ? "+" : "-"}${fmt(Math.abs(r.totalReturn), 0)}</div><div style={{ fontSize: 13, opacity: 0.8 }}>({r.totalReturnPct >= 0 ? "+" : ""}{fmt(r.totalReturnPct, 1)}%)</div></> : "n/a"}
                         </td>
                         <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: COLORS.orange }}>${fmt(r.monthlyIncome)}</td>
                         <td style={{ padding: "8px", textAlign: "right" }}>
@@ -452,11 +463,18 @@ export default function App() {
                 </tbody>
               </table>
             </div>
-            <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 16 }}>Total return = (Market value - Cost basis) + Dividends received. "Dividends received" only counts from when you start using "mark received" on the calendar going forward.</div>
-            <div style={{ marginBottom: 28 }}><Button onClick={addHolding}>Add stock</Button></div>
+            <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 16 }}>Total return = (Market value - Cost basis) + Dividends received. "Dividends received" only counts from when you start using "mark received" on the calendar going forward.</div>
+            <div style={{ marginBottom: 28, display: "flex", gap: 10, alignItems: "center" }}>
+              <select value={newStockPick} onChange={(e) => setNewStockPick(e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 14, padding: "8px 10px", width: 220 }}>
+                <option value="">Select a ticker…</option>
+                {Object.entries(TICKER_LOOKUP).map(([t, n]) => <option key={t} value={t}>{t} -- {n}</option>)}
+                <option value="__custom__">Other (enter manually)</option>
+              </select>
+              <Button variant="orange" onClick={addHolding}>Add stock</Button>
+            </div>
 
             <SectionTitle sub="Excluded from income tracking -- reward shares / illiquid">Other Holdings</SectionTitle>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 28 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, marginBottom: 28 }}>
               <thead>
                 <tr style={{ color: COLORS.textSecondary, textAlign: "left" }}>
                   <th style={{ padding: "6px 8px" }}>Ticker</th>
@@ -482,13 +500,13 @@ export default function App() {
             <SectionTitle>Dry Powder</SectionTitle>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
               <div style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: "14px 18px", flex: "1 1 160px" }}>
-                <div style={{ fontSize: 11, color: COLORS.textSecondary, marginBottom: 8, textTransform: "uppercase" }}>Planned DCA</div>
+                <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 8, textTransform: "uppercase" }}>Planned DCA</div>
                 <input type="number" value={data.monthlyDCA} onChange={(e) => save({ ...data, monthlyDCA: parseFloat(e.target.value) || 0 })}
                   style={{ width: "100%", background: "transparent", border: "none", color: COLORS.textPrimary, fontFamily: "monospace", fontSize: 22, padding: 0 }} />
               </div>
               <Card label="Upcoming dividend cash (auto, 60d)" value={`$${fmt(computed.upcomingDivCash)}`} accent={COLORS.green} />
               <div style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: "14px 18px", flex: "1 1 160px" }}>
-                <div style={{ fontSize: 11, color: COLORS.textSecondary, marginBottom: 8, textTransform: "uppercase" }}>Extra cash</div>
+                <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 8, textTransform: "uppercase" }}>Extra cash</div>
                 <input type="number" value={data.extraCash} onChange={(e) => save({ ...data, extraCash: parseFloat(e.target.value) || 0 })}
                   style={{ width: "100%", background: "transparent", border: "none", color: COLORS.textPrimary, fontFamily: "monospace", fontSize: 22, padding: 0 }} />
               </div>
@@ -500,7 +518,7 @@ export default function App() {
         {tab === "watchlist" && (
           <>
             <h1 style={{ ...H, fontSize: 34, margin: "0 0 20px" }}>WATCHLIST</h1>
-            <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 20 }}>Price history builds automatically from real check-ins. "Log price" lets you add a point yourself in between.</div>
+            <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 20 }}>Price history builds automatically from real check-ins. "Log price" lets you add a point yourself in between.</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(280px, 1fr))", gap: 16, marginBottom: 20 }}>
               {data.watchlist.map((w) => (
                 <div key={w.uid} style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 16 }}>
@@ -518,13 +536,13 @@ export default function App() {
                     {(w.priceHistory || []).length >= 2 ? (
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={w.priceHistory}>
-                          <XAxis dataKey="date" tick={{ fill: COLORS.textMuted, fontSize: 9 }} hide />
-                          <YAxis tick={{ fill: COLORS.textMuted, fontSize: 9 }} domain={["auto", "auto"]} />
-                          <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, fontSize: 11 }} />
+                          <XAxis dataKey="date" tick={{ fill: COLORS.textMuted, fontSize: 11 }} hide />
+                          <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} domain={["auto", "auto"]} />
+                          <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, fontSize: 13 }} />
                           <Line type="monotone" dataKey="close" stroke={COLORS.orange} strokeWidth={2} dot={false} />
                         </LineChart>
                       </ResponsiveContainer>
-                    ) : <div style={{ fontSize: 11, color: COLORS.textMuted, textAlign: "center", paddingTop: 40 }}>No price history yet -- log a snapshot or wait for the next check-in</div>}
+                    ) : <div style={{ fontSize: 13, color: COLORS.textMuted, textAlign: "center", paddingTop: 40 }}>No price history yet -- log a snapshot or wait for the next check-in</div>}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                     <TextCell value={w.notes} onChange={(v) => updateWatch(w.uid, "notes", v)} width={140} />
@@ -537,7 +555,7 @@ export default function App() {
               ))}
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <select value={watchPick} onChange={(e) => setWatchPick(e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 13, padding: "8px 10px", width: 220 }}>
+              <select value={watchPick} onChange={(e) => setWatchPick(e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 14, padding: "8px 10px", width: 220 }}>
                 <option value="">Select a ticker…</option>
                 {Object.entries(TICKER_LOOKUP).map(([t, n]) => <option key={t} value={t}>{t} -- {n}</option>)}
                 <option value="__custom__">Other (enter manually)</option>
@@ -550,9 +568,9 @@ export default function App() {
         {tab === "calendar" && (
           <>
             <h1 style={{ ...H, fontSize: 34, margin: "0 0 20px" }}>DIVIDEND CALENDAR</h1>
-            <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 16 }}>Showing upcoming ex-dates and pay-dates only. Entries marked "est." are projected -- verify closer to the date. During check-ins, Claude adds real dividends.sg data here automatically.</div>
+            <div style={{ fontSize: 14, color: COLORS.textSecondary, marginBottom: 16 }}>Showing upcoming ex-dates and pay-dates only. Entries marked "est." are projected -- verify closer to the date. During check-ins, Claude adds real dividends.sg data here automatically.</div>
 
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 16 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, marginBottom: 16 }}>
               <thead>
                 <tr style={{ color: COLORS.textSecondary, textAlign: "left" }}>
                   <th style={{ padding: "6px 8px" }}>Ticker</th><th style={{ padding: "6px 8px" }}>Ex-date</th><th style={{ padding: "6px 8px" }}>Pay date</th>
@@ -566,8 +584,8 @@ export default function App() {
                   return (
                     <tr key={d.uid} style={{ borderTop: `0.5px solid ${COLORS.border}` }}>
                       <td style={{ padding: "8px" }}><TextCell value={d.id} onChange={(v) => updateCalendar(d.uid, "id", v)} width={60} /></td>
-                      <td style={{ padding: "8px" }}><input type="date" value={d.exDate} onChange={(e) => updateCalendar(d.uid, "exDate", e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 13, padding: "5px 7px" }} /></td>
-                      <td style={{ padding: "8px" }}><input type="date" value={d.payDate} onChange={(e) => updateCalendar(d.uid, "payDate", e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 13, padding: "5px 7px" }} /></td>
+                      <td style={{ padding: "8px" }}><input type="date" value={d.exDate} onChange={(e) => updateCalendar(d.uid, "exDate", e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 14, padding: "5px 7px" }} /></td>
+                      <td style={{ padding: "8px" }}><input type="date" value={d.payDate} onChange={(e) => updateCalendar(d.uid, "payDate", e.target.value)} style={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 14, padding: "5px 7px" }} /></td>
                       <td style={{ padding: "8px", textAlign: "right" }}><EditableCell value={d.perShare} onChange={(v) => updateCalendar(d.uid, "perShare", v)} /></td>
                       <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: COLORS.orange }}>${fmt(cash)}</td>
                       <td style={{ padding: "8px" }}>{d.estimated && <FlagBadge level="amber" text="est." />}</td>
@@ -587,7 +605,7 @@ export default function App() {
             </div>
 
             <SectionTitle>Recently Received</SectionTitle>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead><tr style={{ color: COLORS.textSecondary, textAlign: "left" }}><th style={{ padding: "6px 8px" }}>Ticker</th><th style={{ padding: "6px 8px" }}>Received</th><th style={{ padding: "6px 8px", textAlign: "right" }}>Cash</th></tr></thead>
               <tbody>
                 {(data.divHistory || []).length === 0 && <tr><td colSpan={3} style={{ padding: "12px 8px", color: COLORS.textMuted, fontStyle: "italic" }}>None yet -- use "mark received" above once a distribution is actually paid.</td></tr>}
@@ -608,11 +626,11 @@ export default function App() {
             <h1 style={{ ...H, fontSize: 34, margin: "0 0 20px" }}>DECISION JOURNAL</h1>
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               <input type="text" value={newAlert} onChange={(e) => setNewAlert(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addAlert()}
-                placeholder="Log a decision" style={{ flex: 1, background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, color: COLORS.textPrimary, fontSize: 13, padding: "8px 12px" }} />
+                placeholder="Log a decision" style={{ flex: 1, background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, color: COLORS.textPrimary, fontSize: 14, padding: "8px 12px" }} />
               <Button variant="orange" onClick={addAlert}>Add</Button>
             </div>
             {(data.alertLog || []).map((a, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: `0.5px solid ${COLORS.border}`, fontSize: 13 }}>
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderTop: `0.5px solid ${COLORS.border}`, fontSize: 14 }}>
                 <div><span style={{ color: COLORS.textMuted, fontFamily: "monospace", marginRight: 10 }}>{a.date}</span>{a.text}</div>
                 <Button variant="ghost" onClick={() => removeAlert(i)}>remove</Button>
               </div>
