@@ -2,6 +2,9 @@
   "name": "kt-investment-backend",
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js",
     "checkin": "node -e \"import('./src/checkin.js').then(m => m.runCheckin('manual'))\""
