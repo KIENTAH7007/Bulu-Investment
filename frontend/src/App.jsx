@@ -270,7 +270,8 @@ export default function App() {
     const upcomingDivCash = (data.dividendCalendar || [])
       .filter((d) => new Date(d.payDate) >= today && new Date(d.payDate) <= windowEnd)
       .reduce((s, d) => { const h = data.holdings.find((x) => x.id === d.id); return s + (h ? h.shares * d.perShare : 0); }, 0);
-    const dryPowder = (data.monthlyDCA || 0) + upcomingDivCash + (data.extraCash || 0);
+    const cashReserveDryPowder = data.cashReserves?.dryPowderPortion || 0;
+    const dryPowder = (data.monthlyDCA || 0) + upcomingDivCash + (data.extraCash || 0) + cashReserveDryPowder;
     return { rows, totalMarketValue, totalMonthlyIncome, totalCostBasis, blendedAnnualYield, upcomingDivCash, dryPowder };
   }, [data]);
 
@@ -337,7 +338,7 @@ export default function App() {
               <Card label="Current monthly income" value={`$${fmt(computed.totalMonthlyIncome)}`} accent={COLORS.orange} sub={`${fmt(progressPct, 0)}% of goal`} />
               <Card label="Portfolio value" value={`$${fmt(computed.totalMarketValue, 0)}`} sub={`Cost basis $${fmt(computed.totalCostBasis, 0)}`} />
               <Card label="Blended yield" value={`${fmt(computed.blendedAnnualYield)}%`} sub="Weighted, on current price" />
-              <Card label="Dry powder next 60d" value={`$${fmt(computed.dryPowder, 0)}`} accent={COLORS.green} sub="DCA + dividends + extra" />
+              <Card label="Dry powder next 60d" value={`$${fmt(computed.dryPowder, 0)}`} accent={COLORS.green} sub="DCA + dividends + extra + CF portion" />
             </div>
 
             <div style={{ marginBottom: 28 }}>
@@ -534,7 +535,30 @@ export default function App() {
               </tbody>
             </table>
 
+            <SectionTitle sub="Chocolate Finance balances -- tracked for net worth, only part counted as available dry powder">Cash Reserves</SectionTitle>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 8 }}>
+              <div style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: "14px 18px", flex: "1 1 160px" }}>
+                <div style={{ fontSize: 11, color: COLORS.textSecondary, marginBottom: 8, textTransform: "uppercase" }}>CF -- You</div>
+                <input type="number" value={data.cashReserves?.chocolateFinanceSelf ?? 0} onChange={(e) => save({ ...data, cashReserves: { ...data.cashReserves, chocolateFinanceSelf: parseFloat(e.target.value) || 0 } })}
+                  style={{ width: "100%", background: "transparent", border: "none", color: COLORS.textPrimary, fontFamily: "monospace", fontSize: 20, padding: 0 }} />
+              </div>
+              <div style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: "14px 18px", flex: "1 1 160px" }}>
+                <div style={{ fontSize: 11, color: COLORS.textSecondary, marginBottom: 8, textTransform: "uppercase" }}>CF -- Wife</div>
+                <input type="number" value={data.cashReserves?.chocolateFinanceWife ?? 0} onChange={(e) => save({ ...data, cashReserves: { ...data.cashReserves, chocolateFinanceWife: parseFloat(e.target.value) || 0 } })}
+                  style={{ width: "100%", background: "transparent", border: "none", color: COLORS.textPrimary, fontFamily: "monospace", fontSize: 20, padding: 0 }} />
+              </div>
+              <Card label="Combined CF total" value={`$${fmt((data.cashReserves?.chocolateFinanceSelf || 0) + (data.cashReserves?.chocolateFinanceWife || 0), 0)}`} />
+              <div style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.orange}`, borderRadius: 10, padding: "14px 18px", flex: "1 1 160px" }}>
+                <div style={{ fontSize: 11, color: COLORS.textSecondary, marginBottom: 8, textTransform: "uppercase" }}>Designated as dry powder</div>
+                <input type="number" value={data.cashReserves?.dryPowderPortion ?? 0} onChange={(e) => save({ ...data, cashReserves: { ...data.cashReserves, dryPowderPortion: parseFloat(e.target.value) || 0 } })}
+                  style={{ width: "100%", background: "transparent", border: "none", color: COLORS.orange, fontFamily: "monospace", fontSize: 20, padding: 0 }} />
+              </div>
+              <Card label="Reserved (untouched)" value={`$${fmt(((data.cashReserves?.chocolateFinanceSelf || 0) + (data.cashReserves?.chocolateFinanceWife || 0)) - (data.cashReserves?.dryPowderPortion || 0), 0)}`} accent={COLORS.textMuted} />
+            </div>
+            <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 28 }}>CF isn't SDIC-insured and isn't instant-access (~1-3 business days to withdraw) -- fine for bonus-buy opportunities given twice-daily check-ins, not a substitute for a true emergency fund.</div>
+
             <SectionTitle>Dry Powder</SectionTitle>
+            <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8 }}>Includes the designated CF portion above.</div>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
               <div style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: "14px 18px", flex: "1 1 160px" }}>
                 <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 8, textTransform: "uppercase" }}>Planned DCA</div>

@@ -59,6 +59,11 @@ function seedData() {
       { id: "D05", exDate: "2026-08-10", payDate: "2026-08-19", perShare: 0.81, estimated: true, source: "pattern estimate" },
       { id: "G3B", exDate: "2027-01-04", payDate: "2027-01-15", perShare: 0.0967, estimated: true, source: "pattern estimate" },
     ],
+    cashReserves: {
+      chocolateFinanceSelf: 90000, // approximate, update to your exact figure
+      chocolateFinanceWife: 20000, // approximate, update to your exact figure
+      dryPowderPortion: 45000,
+    },
     alertLog: [],
     incomeHistory: [],
     divHistory: [],
