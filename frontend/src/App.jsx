@@ -17,6 +17,7 @@ const TICKER_LOOKUP = {
   C6L: "Singapore Airlines", C38U: "CapitaLand Integrated Commercial Trust",
   A17U: "Ascendas REIT", S68: "SGX", BN4: "Keppel Ltd", C09: "City Developments",
   G3B: "Amova Singapore STI ETF", CLR: "Lion-Phillip S-REIT ETF", ES3: "SPDR STI ETF",
+  YLD: "Lion-OCBC Securities APAC Financials Dividend Plus ETF",
 };
 function safetyFlag(payoutRatio) {
   if (payoutRatio === null || payoutRatio === undefined || payoutRatio === "") return { level: "none", text: "No data" };
@@ -684,6 +685,24 @@ export default function App() {
                         <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} />
                         <Line type="monotone" dataKey="price" name="Price" stroke={COLORS.orange} strokeWidth={2} dot={false} />
                         <Line type="monotone" dataKey="ma" name={`${r.criteria.maPeriod}d avg`} stroke={COLORS.textMuted} strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                );
+              } else if (r.priceHistory && r.priceHistory.length >= 5) {
+                // No finalized buy criteria yet -- still show a real monitoring chart (200-day MA as a general default) rather than nothing
+                const maSeries = rollingMASeries(r.priceHistory, 200);
+                chart = (
+                  <div style={{ height: 220 }}>
+                    <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 4 }}>Price vs 200-day average -- monitoring only, no buy criteria set yet</div>
+                    <ResponsiveContainer width="100%" height="90%">
+                      <LineChart data={maSeries}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
+                        <XAxis dataKey="date" tick={{ fill: COLORS.textMuted, fontSize: 11 }} minTickGap={40} />
+                        <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} domain={["auto", "auto"]} />
+                        <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} />
+                        <Line type="monotone" dataKey="price" name="Price" stroke={COLORS.orange} strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="ma" name="200d avg" stroke={COLORS.textMuted} strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
