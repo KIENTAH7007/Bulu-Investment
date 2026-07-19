@@ -136,6 +136,8 @@ export default function App() {
   const [checkinRunning, setCheckinRunning] = useState(false);
   const [watchPick, setWatchPick] = useState("");
   const [newStockPick, setNewStockPick] = useState("");
+  const [expandedHoldings, setExpandedHoldings] = useState({});
+  const toggleExpanded = (uid) => setExpandedHoldings((prev) => ({ ...prev, [uid]: !prev[uid] }));
 
   const DEFAULT_STRATEGY = `1) DCA G3B at $2,500 per month.
 2) Dividends from all holdings default to G3B, EXCEPT when a Tier 1 / Tier 2 gate fires on CLR, U11, or D05 -- then that period's dividend cash goes there instead.
@@ -448,75 +450,60 @@ export default function App() {
             </div>
 
             <SectionTitle>Holdings</SectionTitle>
-            <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 10 }}>
-              "Payout %" is the dividend payout ratio -- the % of a company's earnings paid out as dividends. Not available from free price feeds, so type it in yourself when you know it (check the company's latest results). It drives the Safety badge: under 75% = Covered, 75-95% = Watch, 95%+ = Tight.
+            <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 14 }}>
+              "Payout %" is the dividend payout ratio -- the % of a company's earnings paid out as dividends. Not available from free price feeds, so type it in yourself when you know it (check the company's latest results). It drives the Safety badge: under 75% = Covered, 75-95% = Watch, 95%+ = Tight. Click a card for the full editable detail.
             </div>
-            <div style={{ overflowX: "auto", marginBottom: 8 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                <thead>
-                  <tr style={{ color: COLORS.textSecondary, textAlign: "right" }}>
-                    <th style={{ textAlign: "left", padding: "6px 8px" }}>Ticker / name</th>
-                    <th style={{ padding: "6px 8px" }}>Shares / avg cost</th>
-                    <th style={{ padding: "6px 8px" }}>Price / ann. div</th>
-                    <th style={{ padding: "6px 8px" }}>Value (mkt / cost)</th>
-                    <th style={{ padding: "6px 8px" }}>Yield (on cost / now)</th>
-                    <th style={{ padding: "6px 8px" }}>Total return</th>
-                    <th style={{ padding: "6px 8px" }}>Est. $/mo</th>
-                    <th style={{ padding: "6px 8px" }}>Payout % / safety</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {computed.rows.map((r) => {
-                    const flag = safetyFlag(r.payoutRatio);
-                    return (
-                      <tr key={r.uid} style={{ borderTop: `0.5px solid ${COLORS.border}` }}>
-                        <td style={{ padding: "8px" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                            <TextCell value={r.id} onChange={(v) => updateHolding(r.uid, "id", v)} width={100} />
-                            <TextCell value={r.name} onChange={(v) => updateHolding(r.uid, "name", v)} width={140} />
-                          </div>
-                        </td>
-                        <td style={{ padding: "8px", textAlign: "right" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
-                            <EditableCell value={r.shares} onChange={(v) => updateHolding(r.uid, "shares", v)} width={90} />
-                            <EditableCell value={r.avgCost} onChange={(v) => updateHolding(r.uid, "avgCost", v)} width={90} />
-                          </div>
-                        </td>
-                        <td style={{ padding: "8px", textAlign: "right" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
-                            <EditableCell value={r.price} onChange={(v) => updateHolding(r.uid, "price", v)} width={80} />
-                            <EditableCell value={r.annualDiv} onChange={(v) => updateHolding(r.uid, "annualDiv", v)} width={80} />
-                          </div>
-                        </td>
-                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>
-                          <div>${fmt(r.marketValue, 0)}</div>
-                          <div style={{ color: COLORS.textMuted, fontSize: 13 }}>${fmt(r.costBasis, 0)}</div>
-                        </td>
-                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace" }}>
-                          <div style={{ color: COLORS.green }}>{r.yieldOnCost !== null ? `${fmt(r.yieldOnCost)}%` : "n/a"}</div>
-                          <div style={{ color: COLORS.textMuted, fontSize: 13 }}>{r.currentYield !== null ? `${fmt(r.currentYield)}%` : "-"}</div>
-                        </td>
-                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: r.totalReturnPct >= 0 ? COLORS.green : COLORS.red }}>
-                          {r.totalReturnPct !== null ? <><div>{r.totalReturn >= 0 ? "+" : "-"}${fmt(Math.abs(r.totalReturn), 0)}</div><div style={{ fontSize: 13, opacity: 0.8 }}>({r.totalReturnPct >= 0 ? "+" : ""}{fmt(r.totalReturnPct, 1)}%)</div></> : "n/a"}
-                          <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
-                            <span style={{ fontSize: 11, color: COLORS.textMuted }}>total div recv (lifetime) $</span>
-                            <EditableCell value={r.divReceived || 0} onChange={(v) => updateHolding(r.uid, "divReceived", v)} width={70} />
-                          </div>
-                        </td>
-                        <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: COLORS.orange }}>${fmt(r.monthlyIncome)}</td>
-                        <td style={{ padding: "8px", textAlign: "right" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
-                            <EditableCell value={r.payoutRatio ?? ""} onChange={(v) => updateHolding(r.uid, "payoutRatio", v)} width={55} />
-                            <FlagBadge level={flag.level} text={flag.text} />
-                          </div>
-                        </td>
-                        <td style={{ padding: "8px" }}><Button variant="ghost" onClick={() => removeHolding(r.uid)}>remove</Button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, marginBottom: 12 }}>
+              {computed.rows.map((r) => {
+                const flag = safetyFlag(r.payoutRatio);
+                const isOpen = !!expandedHoldings[r.uid];
+                return (
+                  <div key={r.uid} style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, overflow: "hidden" }}>
+                    <div onClick={() => toggleExpanded(r.uid)} style={{ padding: 14, cursor: "pointer" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                        <div>
+                          <span style={{ color: COLORS.orange, fontFamily: "monospace", fontWeight: 600, fontSize: 15 }}>{r.id}</span>
+                          <span style={{ color: COLORS.textSecondary, fontSize: 13, marginLeft: 8 }}>{r.name}</span>
+                        </div>
+                        <FlagBadge level={flag.level} text={flag.text} />
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, fontSize: 14, fontFamily: "monospace" }}>
+                        <div><div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "sans-serif" }}>Shares held</div>{fmt(r.shares, 0)}</div>
+                        <div><div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "sans-serif" }}>Market value</div>${fmt(r.marketValue, 0)}</div>
+                        <div><div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "sans-serif" }}>Yield on cost</div><span style={{ color: COLORS.green }}>{r.yieldOnCost !== null ? `${fmt(r.yieldOnCost)}%` : "n/a"}</span></div>
+                        <div style={{ gridColumn: "span 2" }}>
+                          <div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "sans-serif" }}>Total return</div>
+                          <span style={{ color: r.totalReturnPct >= 0 ? COLORS.green : COLORS.red }}>{r.totalReturnPct !== null ? `${r.totalReturn >= 0 ? "+" : "-"}$${fmt(Math.abs(r.totalReturn), 0)} (${fmt(r.totalReturnPct, 1)}%)` : "n/a"}</span>
+                        </div>
+                        <div><div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "sans-serif" }}>Est. income/mo</div><span style={{ color: COLORS.orange }}>${fmt(r.monthlyIncome)}</span></div>
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 12, color: COLORS.textMuted, display: "flex", justifyContent: "space-between" }}>
+                        <span>Payout ratio: {r.payoutRatio !== null && r.payoutRatio !== undefined && r.payoutRatio !== "" ? `${r.payoutRatio}%` : "no data"}</span>
+                        <span>{isOpen ? "Hide details \u2303" : "Show details \u2304"}</span>
+                      </div>
+                    </div>
+
+                    {isOpen && (
+                      <div onClick={(e) => e.stopPropagation()} style={{ padding: 14, background: COLORS.surfaceRaised, borderTop: `0.5px solid ${COLORS.border}` }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                          <label style={{ fontSize: 11, color: COLORS.textSecondary }}>Ticker<TextCell value={r.id} onChange={(v) => updateHolding(r.uid, "id", v)} width={"100%"} /></label>
+                          <label style={{ fontSize: 11, color: COLORS.textSecondary }}>Name<TextCell value={r.name} onChange={(v) => updateHolding(r.uid, "name", v)} width={"100%"} /></label>
+                          <label style={{ fontSize: 11, color: COLORS.textSecondary }}>Shares<EditableCell value={r.shares} onChange={(v) => updateHolding(r.uid, "shares", v)} width={"100%"} /></label>
+                          <label style={{ fontSize: 11, color: COLORS.textSecondary }}>Avg cost<EditableCell value={r.avgCost} onChange={(v) => updateHolding(r.uid, "avgCost", v)} width={"100%"} /></label>
+                          <label style={{ fontSize: 11, color: COLORS.textSecondary }}>Current price<EditableCell value={r.price} onChange={(v) => updateHolding(r.uid, "price", v)} width={"100%"} /></label>
+                          <label style={{ fontSize: 11, color: COLORS.textSecondary }}>Ann. div/share<EditableCell value={r.annualDiv} onChange={(v) => updateHolding(r.uid, "annualDiv", v)} width={"100%"} /></label>
+                          <label style={{ fontSize: 11, color: COLORS.textSecondary }}>Payout ratio %<EditableCell value={r.payoutRatio ?? ""} onChange={(v) => updateHolding(r.uid, "payoutRatio", v)} width={"100%"} /></label>
+                          <label style={{ fontSize: 11, color: COLORS.textSecondary }}>Total div recv (lifetime) $<EditableCell value={r.divReceived || 0} onChange={(v) => updateHolding(r.uid, "divReceived", v)} width={"100%"} /></label>
+                        </div>
+                        <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 12 }}>
+                          Cost basis: ${fmt(r.costBasis, 0)} &nbsp;&middot;&nbsp; Current yield: {r.currentYield !== null ? `${fmt(r.currentYield)}%` : "-"}
+                        </div>
+                        <Button variant="ghost" onClick={() => removeHolding(r.uid)}>remove holding</Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div style={{ fontSize: 13, color: COLORS.textMuted, marginBottom: 16 }}>Total return = (Market value - Cost basis) + Dividends received. "Dividends received" only counts from when you start using "mark received" on the calendar going forward.</div>
             <div style={{ marginBottom: 28, display: "flex", gap: 10, alignItems: "center" }}>
