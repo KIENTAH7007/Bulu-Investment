@@ -124,6 +124,8 @@ function FlagBadge({ level, text }) {
 export default function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [strategyDraft, setStrategyDraft] = useState("");
+  const [strategySaved, setStrategySaved] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -134,6 +136,10 @@ export default function App() {
   const [checkinRunning, setCheckinRunning] = useState(false);
   const [watchPick, setWatchPick] = useState("");
   const [newStockPick, setNewStockPick] = useState("");
+
+  const DEFAULT_STRATEGY = `1) DCA G3B at $2,500 per month.
+2) Dividends from all holdings default to G3B, EXCEPT when a Tier 1 / Tier 2 gate fires on CLR, U11, or D05 -- then that period's dividend cash goes there instead.
+3) $45K from Chocolate Finance is reserved as dry powder, only deployed when a Tier 1/2 gate fires on CLR, U11, or D05.`;
 
   useEffect(() => {
     fetch("/api/data").then((r) => r.json()).then((d) => {
@@ -147,9 +153,15 @@ export default function App() {
         divHistory: d.divHistory || [],
       };
       setData(normalized);
+      setStrategyDraft(normalized.strategyNotes || DEFAULT_STRATEGY);
       setLoading(false);
     }).catch((e) => { console.error(e); setLoading(false); });
   }, []);
+
+  const saveStrategy = () => {
+    save({ ...data, strategyNotes: strategyDraft, strategyUpdatedAt: todayISO() });
+    setStrategySaved(true);
+  };
 
   const save = useCallback(async (next) => {
     setData(next);
@@ -298,7 +310,7 @@ export default function App() {
   if (loading || !data || !computed) return <div style={{ color: COLORS.textSecondary, padding: 40, fontFamily: "sans-serif", background: COLORS.bg, minHeight: "100vh" }}>Loading dashboard…</div>;
 
   const progressPct = Math.min(100, (computed.totalMonthlyIncome / data.goal) * 100);
-  const navItems = [["dashboard", "Dashboard"], ["portfolio", "Portfolio"], ["gates", "Buy Criteria"], ["watchlist", "Watchlist"], ["calendar", "Dividend Calendar"], ["journal", "Journal"]];
+  const navItems = [["dashboard", "Dashboard"], ["portfolio", "Portfolio"], ["gates", "Buy Criteria"], ["strategy", "Strategy"], ["watchlist", "Watchlist"], ["calendar", "Dividend Calendar"], ["journal", "Journal"]];
 
   return (
     <div style={{ background: COLORS.bg, minHeight: "100vh", color: COLORS.textPrimary, fontFamily: "sans-serif", display: "flex" }}>
@@ -487,6 +499,10 @@ export default function App() {
                         </td>
                         <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: r.totalReturnPct >= 0 ? COLORS.green : COLORS.red }}>
                           {r.totalReturnPct !== null ? <><div>{r.totalReturn >= 0 ? "+" : "-"}${fmt(Math.abs(r.totalReturn), 0)}</div><div style={{ fontSize: 13, opacity: 0.8 }}>({r.totalReturnPct >= 0 ? "+" : ""}{fmt(r.totalReturnPct, 1)}%)</div></> : "n/a"}
+                          <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+                            <span style={{ fontSize: 11, color: COLORS.textMuted }}>div recv $</span>
+                            <EditableCell value={r.divReceived || 0} onChange={(v) => updateHolding(r.uid, "divReceived", v)} width={70} />
+                          </div>
                         </td>
                         <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: COLORS.orange }}>${fmt(r.monthlyIncome)}</td>
                         <td style={{ padding: "8px", textAlign: "right" }}>
@@ -730,6 +746,31 @@ export default function App() {
                 </div>
               );
             })}
+          </>
+        )}
+
+        {tab === "strategy" && (
+          <>
+            <h1 style={{ ...H, fontSize: 34, margin: "0 0 8px" }}>STRATEGY</h1>
+            <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 24 }}>Your current working plan, for quick reference. Edit and save whenever it needs revising -- the saved version is what's shown here across sessions.</div>
+
+            <SectionTitle sub={data.strategyUpdatedAt ? `Last updated ${data.strategyUpdatedAt}` : "Not yet saved"}>Current Strategy</SectionTitle>
+            <div style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.orange}`, borderRadius: 10, padding: 20, marginBottom: 28, whiteSpace: "pre-wrap", fontSize: 15, lineHeight: 1.7, color: COLORS.textPrimary }}>
+              {data.strategyNotes || <span style={{ color: COLORS.textMuted, fontStyle: "italic" }}>No strategy saved yet -- edit the draft below and click Save.</span>}
+            </div>
+
+            <SectionTitle>Edit</SectionTitle>
+            <textarea
+              value={strategyDraft}
+              onChange={(e) => { setStrategyDraft(e.target.value); setStrategySaved(false); }}
+              rows={8}
+              style={{ width: "100%", background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, color: COLORS.textPrimary, fontSize: 14, padding: 12, fontFamily: "inherit", lineHeight: 1.6, boxSizing: "border-box" }}
+            />
+            <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
+              <Button variant="orange" onClick={saveStrategy}>Save strategy</Button>
+              {!strategySaved && <span style={{ fontSize: 12, color: COLORS.amber }}>Unsaved changes</span>}
+              {strategySaved && data.strategyNotes === strategyDraft && <span style={{ fontSize: 12, color: COLORS.textMuted }}>Saved</span>}
+            </div>
           </>
         )}
 
