@@ -500,7 +500,7 @@ export default function App() {
                         <td style={{ padding: "8px", textAlign: "right", fontFamily: "monospace", color: r.totalReturnPct >= 0 ? COLORS.green : COLORS.red }}>
                           {r.totalReturnPct !== null ? <><div>{r.totalReturn >= 0 ? "+" : "-"}${fmt(Math.abs(r.totalReturn), 0)}</div><div style={{ fontSize: 13, opacity: 0.8 }}>({r.totalReturnPct >= 0 ? "+" : ""}{fmt(r.totalReturnPct, 1)}%)</div></> : "n/a"}
                           <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
-                            <span style={{ fontSize: 11, color: COLORS.textMuted }}>div recv $</span>
+                            <span style={{ fontSize: 11, color: COLORS.textMuted }}>total div recv (lifetime) $</span>
                             <EditableCell value={r.divReceived || 0} onChange={(v) => updateHolding(r.uid, "divReceived", v)} width={70} />
                           </div>
                         </td>
