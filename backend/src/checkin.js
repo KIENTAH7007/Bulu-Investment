@@ -51,6 +51,22 @@ async function refreshDividends(holding, data) {
   const futureGrouped = grouped.filter((g) => g.payDate >= today);
   const pastGrouped = grouped.filter((g) => g.payDate < today).sort((a, b) => b.payDate.localeCompare(a.payDate));
 
+  // Auto-update Ann. div/share from real trailing-12-month confirmed distributions --
+  // this is what was missing before: the scraper found real numbers but nothing ever
+  // wrote them into the field the app actually displays and calculates yield from.
+  const oneYearAgo = new Date(); oneYearAgo.setDate(oneYearAgo.getDate() - 365);
+  const oneYearAgoStr = oneYearAgo.toISOString().slice(0, 10);
+  const trailing12mo = grouped
+    .filter((g) => g.payDate >= oneYearAgoStr && g.payDate <= today)
+    .reduce((s, g) => s + g.amount, 0);
+  if (trailing12mo > 0) {
+    const rounded = Math.round(trailing12mo * 10000) / 10000;
+    if (rounded !== holding.annualDiv) {
+      console.log(`[${holding.id}] Ann. div/share updated: ${holding.annualDiv} -> ${rounded} (trailing 12mo from dividends.sg)`);
+      holding.annualDiv = rounded;
+    }
+  }
+
   // Real confirmed upcoming distributions from dividends.sg -- these win over any estimate
   for (const div of futureGrouped) {
     const exists = data.dividendCalendar.some((c) => c.id === holding.id && c.exDate === div.exDate);
