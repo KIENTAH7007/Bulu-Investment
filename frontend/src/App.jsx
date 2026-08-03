@@ -184,6 +184,17 @@ export default function App() {
     setCheckinRunning(false);
   };
 
+  const resetAndRecheck = async (ticker) => {
+    setCheckinRunning(true);
+    try {
+      await fetch("/api/reset-alerts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ticker ? { ticker } : {}) });
+      await fetch("/api/checkin", { method: "POST" });
+      const fresh = await fetch("/api/data").then((r) => r.json());
+      setData(fresh);
+    } catch (e) { console.error(e); }
+    setCheckinRunning(false);
+  };
+
   const updateHolding = (uid, field, value) => save({ ...data, holdings: data.holdings.map((h) => h.uid === uid ? { ...h, [field]: value } : h) });
   const removeHolding = (uid) => save({ ...data, holdings: data.holdings.filter((h) => h.uid !== uid) });
   const addHolding = () => {
@@ -720,9 +731,14 @@ export default function App() {
                       <span style={{ color: COLORS.textSecondary, marginLeft: 8, fontSize: 13 }}>{r.name}</span>
                     </div>
                     {critType ? (
-                      <div style={{ display: "flex", gap: 8 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                         <TierBadge met={tier1} label={r.criteria.type === "index-dca" ? "DCA" : "Tier 1"} />
                         <TierBadge met={tier2} label="Tier 2" />
+                        {(tier1 || tier2) && (
+                          <Button variant="ghost" disabled={checkinRunning} onClick={() => resetAndRecheck(r.id)}>
+                            {checkinRunning ? "…" : "Resend alert"}
+                          </Button>
+                        )}
                       </div>
                     ) : (
                       <span style={{ fontSize: 12, color: COLORS.textMuted, fontStyle: "italic" }}>No buy criteria configured for this holding</span>

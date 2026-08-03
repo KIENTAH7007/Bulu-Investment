@@ -162,21 +162,36 @@ export async function runCheckin(trigger = "scheduled") {
 
     const rsiValue = rsi(holding.priceHistory);
     const prevState = holding.alertState || { tier1: false, tier2: false };
+    const newState = { tier1: prevState.tier1, tier2: prevState.tier2 };
 
-    // Only fire when a condition transitions from false -> true (avoid duplicate spam every check-in)
-    if (result.tier1 && !prevState.tier1) {
-      const { plain, html } = buildAlertText(holding.id, 1, result, holding, rsiValue);
-      const sendResult = await sendTelegramMessage(html);
-      data.alertLog.unshift({ date: todayISO(), text: annotateDeliveryStatus(plain, sendResult) });
-      alertsFired.push({ ticker: holding.id, tier: 1, telegramSent: !!sendResult.ok });
+    // Fire when a condition is met and hasn't been SUCCESSFULLY delivered yet.
+    // Critically: a failed or skipped Telegram send does NOT count as "fired" --
+    // it keeps retrying on every check-in until it actually gets through, rather
+    // than silently marking it done and going quiet forever (the original bug).
+    if (result.tier1) {
+      if (!prevState.tier1) {
+        const { plain, html } = buildAlertText(holding.id, 1, result, holding, rsiValue);
+        const sendResult = await sendTelegramMessage(html);
+        data.alertLog.unshift({ date: todayISO(), text: annotateDeliveryStatus(plain, sendResult) });
+        alertsFired.push({ ticker: holding.id, tier: 1, telegramSent: !!sendResult.ok });
+        newState.tier1 = !!sendResult.ok;
+      }
+    } else {
+      newState.tier1 = false; // condition no longer met -- reset so it can fire fresh next time it trips
     }
-    if (result.tier2 && !prevState.tier2) {
-      const { plain, html } = buildAlertText(holding.id, 2, result, holding, rsiValue);
-      const sendResult = await sendTelegramMessage(html);
-      data.alertLog.unshift({ date: todayISO(), text: annotateDeliveryStatus(plain, sendResult) });
-      alertsFired.push({ ticker: holding.id, tier: 2, telegramSent: !!sendResult.ok });
+
+    if (result.tier2) {
+      if (!prevState.tier2) {
+        const { plain, html } = buildAlertText(holding.id, 2, result, holding, rsiValue);
+        const sendResult = await sendTelegramMessage(html);
+        data.alertLog.unshift({ date: todayISO(), text: annotateDeliveryStatus(plain, sendResult) });
+        alertsFired.push({ ticker: holding.id, tier: 2, telegramSent: !!sendResult.ok });
+        newState.tier2 = !!sendResult.ok;
+      }
+    } else {
+      newState.tier2 = false;
     }
-    holding.alertState = { tier1: result.tier1, tier2: result.tier2 };
+    holding.alertState = newState;
   }
 
   // Watchlist: just refresh price + append to history, no criteria evaluated (Phase 2 scope is core holdings only)
