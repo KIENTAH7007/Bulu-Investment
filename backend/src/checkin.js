@@ -161,35 +161,40 @@ export async function runCheckin(trigger = "scheduled") {
     if (!result) continue; // no buy-criteria set for this holding yet -- price/dividends were still refreshed above
 
     const rsiValue = rsi(holding.priceHistory);
-    const prevState = holding.alertState || { tier1: false, tier2: false };
-    const newState = { tier1: prevState.tier1, tier2: prevState.tier2 };
+    const prevState = holding.alertState || { tier1: false, tier2: false, tier1LastFired: null, tier2LastFired: null };
+    const today = todayISO();
+    const newState = { ...prevState };
 
-    // Fire when a condition is met and hasn't been SUCCESSFULLY delivered yet.
-    // Critically: a failed or skipped Telegram send does NOT count as "fired" --
-    // it keeps retrying on every check-in until it actually gets through, rather
-    // than silently marking it done and going quiet forever (the original bug).
+    // Fires once per calendar day while a condition stays met (a daily reminder,
+    // not a one-time notice) -- but a failed/skipped Telegram send doesn't count
+    // as that day's reminder, so it keeps retrying same-day until it actually
+    // delivers. Condition clearing resets tracking so a future re-trigger is fresh.
     if (result.tier1) {
-      if (!prevState.tier1) {
+      newState.tier1 = true;
+      if (prevState.tier1LastFired !== today) {
         const { plain, html } = buildAlertText(holding.id, 1, result, holding, rsiValue);
         const sendResult = await sendTelegramMessage(html);
-        data.alertLog.unshift({ date: todayISO(), text: annotateDeliveryStatus(plain, sendResult) });
+        data.alertLog.unshift({ date: today, text: annotateDeliveryStatus(plain, sendResult) });
         alertsFired.push({ ticker: holding.id, tier: 1, telegramSent: !!sendResult.ok });
-        newState.tier1 = !!sendResult.ok;
+        if (sendResult.ok) newState.tier1LastFired = today;
       }
     } else {
-      newState.tier1 = false; // condition no longer met -- reset so it can fire fresh next time it trips
+      newState.tier1 = false;
+      newState.tier1LastFired = null;
     }
 
     if (result.tier2) {
-      if (!prevState.tier2) {
+      newState.tier2 = true;
+      if (prevState.tier2LastFired !== today) {
         const { plain, html } = buildAlertText(holding.id, 2, result, holding, rsiValue);
         const sendResult = await sendTelegramMessage(html);
-        data.alertLog.unshift({ date: todayISO(), text: annotateDeliveryStatus(plain, sendResult) });
+        data.alertLog.unshift({ date: today, text: annotateDeliveryStatus(plain, sendResult) });
         alertsFired.push({ ticker: holding.id, tier: 2, telegramSent: !!sendResult.ok });
-        newState.tier2 = !!sendResult.ok;
+        if (sendResult.ok) newState.tier2LastFired = today;
       }
     } else {
       newState.tier2 = false;
+      newState.tier2LastFired = null;
     }
     holding.alertState = newState;
   }

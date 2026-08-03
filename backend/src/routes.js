@@ -30,7 +30,7 @@ router.post("/reset-alerts", (req, res) => {
   const data = loadData();
   const ticker = req.body?.ticker;
   data.holdings = data.holdings.map((h) =>
-    !ticker || h.id === ticker ? { ...h, alertState: { tier1: false, tier2: false } } : h
+    !ticker || h.id === ticker ? { ...h, alertState: { tier1: false, tier2: false, tier1LastFired: null, tier2LastFired: null } } : h
   );
   saveData(data);
   res.json({ reset: ticker || "all" });
