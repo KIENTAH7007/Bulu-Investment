@@ -122,11 +122,20 @@ function buildAlertText(ticker, tier, result, holding, rsiValue) {
   const icon = TICKER_ICON[ticker] || "\ud83d\udd14";
   const label = result.purchaseType === "dca" ? "Scheduled DCA" : `Lump sum opportunity (Tier ${tier})`;
   const reason = tier === 1 ? result.reason1 : result.reason2;
-  let text = `${icon} <b>${ticker}</b> \u2014 ${label}\n${reason}`;
+  let plain = `${icon} ${ticker} \u2014 ${label}\n${reason}`;
+  let html = `${icon} <b>${ticker}</b> \u2014 ${label}\n${reason}`;
   if (result.purchaseType === "lumpsum" && rsiValue !== null) {
-    text += `\nRSI ${rsiValue.toFixed(0)}${rsiValue < 40 ? " (mildly oversold, adds confidence)" : ""}`;
+    const rsiLine = `\nRSI ${rsiValue.toFixed(0)}${rsiValue < 40 ? " (mildly oversold, adds confidence)" : ""}`;
+    plain += rsiLine;
+    html += rsiLine;
   }
-  return text;
+  return { plain, html };
+}
+
+function annotateDeliveryStatus(plainText, sendResult) {
+  if (sendResult && sendResult.ok) return plainText; // delivered fine, no need to clutter the journal
+  if (sendResult && sendResult.skipped) return `${plainText}\n\u26a0\ufe0f Telegram not configured -- alert NOT sent`;
+  return `${plainText}\n\u26a0\ufe0f Telegram send FAILED -- check Railway logs`;
 }
 
 export async function runCheckin(trigger = "scheduled") {
@@ -156,16 +165,16 @@ export async function runCheckin(trigger = "scheduled") {
 
     // Only fire when a condition transitions from false -> true (avoid duplicate spam every check-in)
     if (result.tier1 && !prevState.tier1) {
-      const text = buildAlertText(holding.id, 1, result, holding, rsiValue);
-      await sendTelegramMessage(text);
-      data.alertLog.unshift({ date: todayISO(), text });
-      alertsFired.push({ ticker: holding.id, tier: 1 });
+      const { plain, html } = buildAlertText(holding.id, 1, result, holding, rsiValue);
+      const sendResult = await sendTelegramMessage(html);
+      data.alertLog.unshift({ date: todayISO(), text: annotateDeliveryStatus(plain, sendResult) });
+      alertsFired.push({ ticker: holding.id, tier: 1, telegramSent: !!sendResult.ok });
     }
     if (result.tier2 && !prevState.tier2) {
-      const text = buildAlertText(holding.id, 2, result, holding, rsiValue);
-      await sendTelegramMessage(text);
-      data.alertLog.unshift({ date: todayISO(), text });
-      alertsFired.push({ ticker: holding.id, tier: 2 });
+      const { plain, html } = buildAlertText(holding.id, 2, result, holding, rsiValue);
+      const sendResult = await sendTelegramMessage(html);
+      data.alertLog.unshift({ date: todayISO(), text: annotateDeliveryStatus(plain, sendResult) });
+      alertsFired.push({ ticker: holding.id, tier: 2, telegramSent: !!sendResult.ok });
     }
     holding.alertState = { tier1: result.tier1, tier2: result.tier2 };
   }
