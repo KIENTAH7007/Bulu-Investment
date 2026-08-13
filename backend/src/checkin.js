@@ -51,6 +51,17 @@ async function refreshDividends(holding, data) {
   const futureGrouped = grouped.filter((g) => g.payDate >= today);
   const pastGrouped = grouped.filter((g) => g.payDate < today).sort((a, b) => b.payDate.localeCompare(a.payDate));
 
+  // Track the most recent EX-date that has already occurred (independent of whether
+  // its pay-date has happened yet -- the mechanical price drop happens ON the ex-date).
+  // Used by evaluateReit's cooldown check to avoid mistaking that drop for genuine value.
+  const exDatesOccurred = grouped.filter((g) => g.exDate <= today).map((g) => g.exDate).sort();
+  if (exDatesOccurred.length > 0) {
+    const mostRecentExDate = exDatesOccurred[exDatesOccurred.length - 1];
+    if (!holding.lastExDate || mostRecentExDate > holding.lastExDate) {
+      holding.lastExDate = mostRecentExDate;
+    }
+  }
+
   // Auto-update Ann. div/share from real trailing-12-month confirmed distributions --
   // this is what was missing before: the scraper found real numbers but nothing ever
   // wrote them into the field the app actually displays and calculates yield from.

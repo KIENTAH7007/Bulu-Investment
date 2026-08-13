@@ -43,20 +43,39 @@ export function evaluateIndexDca(holding, { isDcaDay }) {
 
 // CLR-style REIT: yield above its own trailing-N-quarter average (tier 1) +
 // price also below its shorter MA as confirmation (tier 2)
+// Days after a confirmed ex-date to hold off firing -- the price typically drops
+// ~the dividend amount ON the ex-date, which mechanically spikes trailing yield
+// even though nothing about the REIT's actual value changed. Waiting lets that
+// settle before trusting the yield signal as real.
+const EX_DATE_COOLDOWN_DAYS = 10;
+
 export function evaluateReit(holding) {
-  const { price, priceHistory, yieldHistory, criteria } = holding;
+  const { price, priceHistory, yieldHistory, criteria, lastExDate } = holding;
   const yieldValues = (yieldHistory || []).map((y) => (typeof y === "number" ? y : y.yield));
   const avgYield = avgOfLastN(yieldValues, criteria.yieldLookbackQuarters);
   const currentYield = yieldValues.length ? yieldValues[yieldValues.length - 1] : null;
   const ma = movingAverage(priceHistory, criteria.maPeriod);
   const notBreakingDown = maSlopeUp(priceHistory, criteria.maPeriod);
 
-  const tier1 = avgYield !== null && currentYield !== null && currentYield > avgYield && notBreakingDown !== false;
+  let inCooldown = false;
+  let cooldownDaysLeft = 0;
+  if (lastExDate) {
+    const daysSince = Math.floor((new Date() - new Date(lastExDate)) / 86400000);
+    if (daysSince >= 0 && daysSince < EX_DATE_COOLDOWN_DAYS) {
+      inCooldown = true;
+      cooldownDaysLeft = EX_DATE_COOLDOWN_DAYS - daysSince;
+    }
+  }
+
+  const yieldGateMet = avgYield !== null && currentYield !== null && currentYield > avgYield && notBreakingDown !== false;
+  const tier1 = yieldGateMet && !inCooldown;
   const tier2 = tier1 && ma !== null && price < ma;
 
   return {
     tier1, tier2,
-    reason1: tier1 ? `Yield ${currentYield.toFixed(2)}% above ${criteria.yieldLookbackQuarters}-quarter average ${avgYield.toFixed(2)}%, no structural breakdown` : null,
+    reason1: inCooldown
+      ? `Yield gate would be met, but holding off ${cooldownDaysLeft} more day(s) -- within ${EX_DATE_COOLDOWN_DAYS} days of ex-date (${lastExDate}), likely a mechanical price adjustment rather than genuine value`
+      : (tier1 ? `Yield ${currentYield.toFixed(2)}% above ${criteria.yieldLookbackQuarters}-quarter average ${avgYield.toFixed(2)}%, no structural breakdown` : null),
     reason2: tier2 ? `Also below its ${criteria.maPeriod}-day average ($${ma.toFixed(2)}) -- stronger confirmation` : null,
     purchaseType: "lumpsum",
   };
