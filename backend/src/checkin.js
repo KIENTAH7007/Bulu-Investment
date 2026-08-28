@@ -62,18 +62,33 @@ async function refreshDividends(holding, data) {
     }
   }
 
-  // Auto-update Ann. div/share from real trailing-12-month confirmed distributions --
-  // this is what was missing before: the scraper found real numbers but nothing ever
-  // wrote them into the field the app actually displays and calculates yield from.
-  const oneYearAgo = new Date(); oneYearAgo.setDate(oneYearAgo.getDate() - 365);
-  const oneYearAgoStr = oneYearAgo.toISOString().slice(0, 10);
-  const trailing12mo = grouped
-    .filter((g) => g.payDate >= oneYearAgoStr && g.payDate <= today)
+  // Auto-update Ann. div/share from real confirmed distributions -- but do it by
+  // COUNT of payments (inferred from actual payment spacing), not a calendar-day
+  // window. A fixed 365-day window can accidentally capture 3 payments instead of
+  // 2 for a semi-annual payer if the check-in happens to run right on a payment
+  // anniversary -- which is exactly what caused the CLR/U11 spike. Counting by
+  // payment frequency instead makes this immune to what day "today" happens to be.
+  const allPayDatesSorted = [...new Set(grouped.map((g) => g.payDate))].sort();
+  let paymentsPerYear = 2; // sensible default (semi-annual) if not enough history to infer
+  if (allPayDatesSorted.length >= 2) {
+    const gaps = [];
+    for (let i = 1; i < allPayDatesSorted.length; i++) {
+      gaps.push((new Date(allPayDatesSorted[i]) - new Date(allPayDatesSorted[i - 1])) / 86400000);
+    }
+    const medianGap = gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)];
+    if (medianGap < 60) paymentsPerYear = 12;
+    else if (medianGap < 130) paymentsPerYear = 4;
+    else if (medianGap < 270) paymentsPerYear = 2;
+    else paymentsPerYear = 1;
+  }
+  const confirmedPastPayDates = allPayDatesSorted.filter((d) => d <= today).slice(-paymentsPerYear);
+  const trailingSum = grouped
+    .filter((g) => confirmedPastPayDates.includes(g.payDate))
     .reduce((s, g) => s + g.amount, 0);
-  if (trailing12mo > 0) {
-    const rounded = Math.round(trailing12mo * 10000) / 10000;
+  if (trailingSum > 0 && confirmedPastPayDates.length === paymentsPerYear) {
+    const rounded = Math.round(trailingSum * 10000) / 10000;
     if (rounded !== holding.annualDiv) {
-      console.log(`[${holding.id}] Ann. div/share updated: ${holding.annualDiv} -> ${rounded} (trailing 12mo from dividends.sg)`);
+      console.log(`[${holding.id}] Ann. div/share updated: ${holding.annualDiv} -> ${rounded} (last ${paymentsPerYear} confirmed payment(s) from dividends.sg)`);
       holding.annualDiv = rounded;
     }
   }
