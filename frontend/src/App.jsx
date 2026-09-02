@@ -594,7 +594,15 @@ export default function App() {
         {tab === "gates" && (
           <>
             <h1 style={{ ...H, fontSize: 34, margin: "0 0 8px" }}>BUY CRITERIA</h1>
-            <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 24 }}>What each holding's Tier 1 / Tier 2 gates are actually seeing right now. Updates with each check-in.</div>
+            <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 20 }}>What each holding's Tier 1 / Tier 2 gates are actually seeing right now. Updates with each check-in.</div>
+
+            <div style={{ background: COLORS.surface, border: `0.5px solid ${COLORS.amber}`, borderRadius: 10, padding: 18, marginBottom: 28 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: COLORS.amber }}>Workflow: when CLR, U11, or D05 fires Tier 1/2</div>
+              <div style={{ fontSize: 13, color: COLORS.textPrimary, lineHeight: 1.6 }}>
+                Price/trend alone can't tell "cheap from sentiment" (fine to buy) apart from "cheap because the business is genuinely worth less" (a value trap) -- both can look identical on a chart. So the trend check no longer silently blocks these three; instead, whenever Tier 1/2 fires, <b>come back and ask Claude to check that trust/bank's actual fundamentals</b> (income trend, NAV, asset quality, any red flags) before buying. If a card below shows "Trend soft," treat that as a prompt to check, not an automatic no.
+              </div>
+              <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 10 }}>G3B doesn't need this -- it's diversified across ~30 companies, so no single sector's problem defines the whole fund. Its criteria stay schedule/dip-based as before.</div>
+            </div>
 
             <SectionTitle>Gate Reference</SectionTitle>
             <div style={{ overflowX: "auto", marginBottom: 32 }}>
@@ -735,9 +743,12 @@ export default function App() {
                       <span style={{ color: COLORS.textSecondary, marginLeft: 8, fontSize: 13 }}>{r.name}</span>
                     </div>
                     {critType ? (
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                         <TierBadge met={tier1} label={r.criteria.type === "index-dca" ? "DCA" : "Tier 1"} />
                         <TierBadge met={tier2} label="Tier 2" />
+                        {r.trendWeak && (r.criteria.type === "reit" || r.criteria.type === "bank-pb") && (
+                          <span style={{ background: COLORS.amberSoft, color: COLORS.amber, fontSize: 11, padding: "4px 10px", borderRadius: 12, fontWeight: 600 }}>Trend soft -- check fundamentals</span>
+                        )}
                         {(tier1 || tier2) && (
                           <Button variant="ghost" disabled={checkinRunning} onClick={() => resetAndRecheck(r.id)}>
                             {checkinRunning ? "…" : "Resend alert"}

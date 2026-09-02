@@ -185,6 +185,7 @@ export async function runCheckin(trigger = "scheduled") {
     else if (critType === "reit") result = evaluateReit(holding);
     else if (critType === "bank-pb") result = evaluateBankPb(holding);
     if (!result) continue; // no buy-criteria set for this holding yet -- price/dividends were still refreshed above
+    holding.trendWeak = !!result.trendWeak;
 
     const rsiValue = rsi(holding.priceHistory);
     const prevState = holding.alertState || { tier1: false, tier2: false, tier1LastFired: null, tier2LastFired: null };

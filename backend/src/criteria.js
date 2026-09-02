@@ -55,7 +55,11 @@ export function evaluateReit(holding) {
   const avgYield = avgOfLastN(yieldValues, criteria.yieldLookbackQuarters);
   const currentYield = yieldValues.length ? yieldValues[yieldValues.length - 1] : null;
   const ma = movingAverage(priceHistory, criteria.maPeriod);
-  const notBreakingDown = maSlopeUp(priceHistory, criteria.maPeriod);
+  // Trend slope can no longer reliably distinguish "cheap from sentiment" (fine to buy)
+  // from "cheap from real deterioration" (a value trap) -- both can look identical on a
+  // price chart. So this is now a flagged note for a manual fundamentals check, not a
+  // silent veto on the gate itself. See the Buy Criteria tab workflow note.
+  const trendWeak = maSlopeUp(priceHistory, criteria.maPeriod) === false;
 
   let inCooldown = false;
   let cooldownDaysLeft = 0;
@@ -67,21 +71,22 @@ export function evaluateReit(holding) {
     }
   }
 
-  const yieldGateMet = avgYield !== null && currentYield !== null && currentYield > avgYield && notBreakingDown !== false;
+  const yieldGateMet = avgYield !== null && currentYield !== null && currentYield > avgYield;
   const tier1 = yieldGateMet && !inCooldown;
   const tier2 = tier1 && ma !== null && price < ma;
+  const trendNote = trendWeak ? " -- trend soft, ask Claude to check fundamentals before buying" : "";
 
   return {
-    tier1, tier2,
+    tier1, tier2, trendWeak,
     reason1: inCooldown
       ? `Yield gate would be met, but holding off ${cooldownDaysLeft} more day(s) -- within ${EX_DATE_COOLDOWN_DAYS} days of ex-date (${lastExDate}), likely a mechanical price adjustment rather than genuine value`
-      : (tier1 ? `Yield ${currentYield.toFixed(2)}% above ${criteria.yieldLookbackQuarters}-quarter average ${avgYield.toFixed(2)}%, no structural breakdown` : null),
-    reason2: tier2 ? `Also below its ${criteria.maPeriod}-day average ($${ma.toFixed(2)}) -- stronger confirmation` : null,
+      : (tier1 ? `Yield ${currentYield.toFixed(2)}% above ${criteria.yieldLookbackQuarters}-quarter average ${avgYield.toFixed(2)}%${trendNote}` : null),
+    reason2: tier2 ? `Also below its ${criteria.maPeriod}-day average ($${ma.toFixed(2)}) -- stronger confirmation${trendNote}` : null,
     purchaseType: "lumpsum",
   };
 }
 
-// Bank-style: P/B below its own N-year average (tier 1), into the cheap band and MA still healthy (tier 2)
+// Bank-style: P/B below its own N-year average (tier 1), into the cheap band (tier 2)
 // pbHistoricalAvg / pbHistoricalBandLow live in holding.criteria -- these come from research
 // (P/B needs book value + multi-year history, not something a free feed provides), refreshed
 // periodically by Claude during check-ins or manually. bookValuePerShare updates quarterly with
@@ -89,17 +94,20 @@ export function evaluateReit(holding) {
 export function evaluateBankPb(holding) {
   const { price, bookValuePerShare, priceHistory, criteria } = holding;
   const { pbHistoricalAvg, pbHistoricalBandLow } = criteria;
-  if (!bookValuePerShare) return { tier1: false, tier2: false, reason1: null, reason2: null, purchaseType: "lumpsum" };
+  if (!bookValuePerShare) return { tier1: false, tier2: false, reason1: null, reason2: null, purchaseType: "lumpsum", trendWeak: false };
   const pb = price / bookValuePerShare;
-  const trendHealthy = maSlopeUp(priceHistory, 200);
+  // Same reasoning as evaluateReit above -- trend slope downgraded to an informational flag,
+  // not a gate, since it can't reliably tell sentiment-driven cheap from a real value trap.
+  const trendWeak = maSlopeUp(priceHistory, 200) === false;
 
-  const tier1 = pbHistoricalAvg != null && pb < pbHistoricalAvg && trendHealthy !== false;
+  const tier1 = pbHistoricalAvg != null && pb < pbHistoricalAvg;
   const tier2 = tier1 && pbHistoricalBandLow != null && pb <= pbHistoricalBandLow;
+  const trendNote = trendWeak ? " -- trend soft, ask Claude to check fundamentals before buying" : "";
 
   return {
-    tier1, tier2,
-    reason1: tier1 ? `P/B ${pb.toFixed(2)}x below its ${criteria.pbLookbackYears}-year average ${pbHistoricalAvg.toFixed(2)}x, trend still healthy` : null,
-    reason2: tier2 ? `P/B has dropped into the historically cheap band (<= ${pbHistoricalBandLow.toFixed(2)}x)` : null,
+    tier1, tier2, trendWeak,
+    reason1: tier1 ? `P/B ${pb.toFixed(2)}x below its ${criteria.pbLookbackYears}-year average ${pbHistoricalAvg.toFixed(2)}x${trendNote}` : null,
+    reason2: tier2 ? `P/B has dropped into the historically cheap band (<= ${pbHistoricalBandLow.toFixed(2)}x)${trendNote}` : null,
     purchaseType: "lumpsum",
     pb,
   };
