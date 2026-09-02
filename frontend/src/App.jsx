@@ -634,8 +634,8 @@ export default function App() {
 
               let chart = null;
               if (critType === "bank-pb") {
-                const series = pbSeries(r.priceHistory, r.bookValuePerShare);
                 const avg = r.criteria.pbHistoricalAvg, bandLow = r.criteria.pbHistoricalBandLow;
+                const series = pbSeries(r.priceHistory, r.bookValuePerShare).map((p) => ({ ...p, avg, bandLow }));
                 chart = (
                   <div style={{ height: 220 }}>
                     <ResponsiveContainer width="100%" height="100%">
@@ -647,6 +647,8 @@ export default function App() {
                         {bandLow != null && <ReferenceLine y={bandLow} stroke={COLORS.red} strokeDasharray="4 4" label={{ value: "Cheap band", fill: COLORS.red, fontSize: 11, position: "insideBottomLeft" }} />}
                         {avg != null && <ReferenceLine y={avg} stroke={COLORS.amber} strokeDasharray="4 4" label={{ value: "5yr average", fill: COLORS.amber, fontSize: 11, position: "insideTopLeft" }} />}
                         <Line type="monotone" dataKey="pb" name="P/B ratio" stroke={COLORS.orange} strokeWidth={2} dot={false} />
+                        {avg != null && <Line type="monotone" dataKey="avg" name="5yr average" stroke={COLORS.amber} strokeWidth={1} strokeDasharray="4 4" dot={false} legendType="none" />}
+                        {bandLow != null && <Line type="monotone" dataKey="bandLow" name="Cheap band" stroke={COLORS.red} strokeWidth={1} strokeDasharray="4 4" dot={false} legendType="none" />}
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
@@ -655,18 +657,20 @@ export default function App() {
                 const yieldSeries = (r.yieldHistory || []).map((y) => (typeof y === "number" ? { date: "", yield: y } : y));
                 const maSeries = rollingMASeries(r.priceHistory, r.criteria.maPeriod);
                 const avgYield = yieldSeries.length ? yieldSeries.slice(-r.criteria.yieldLookbackQuarters).reduce((s, y) => s + y.yield, 0) / Math.min(yieldSeries.length, r.criteria.yieldLookbackQuarters) : null;
+                const yieldSeriesWithAvg = yieldSeries.map((p) => ({ ...p, avgYield }));
                 chart = (
                   <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                     <div style={{ flex: "1 1 260px", height: 200 }}>
                       <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 4 }}>Yield vs {r.criteria.yieldLookbackQuarters}-quarter average</div>
                       <ResponsiveContainer width="100%" height="90%">
-                        <LineChart data={yieldSeries}>
+                        <LineChart data={yieldSeriesWithAvg}>
                           <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
                           <XAxis dataKey="date" tick={{ fill: COLORS.textMuted, fontSize: 11 }} hide />
                           <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} unit="%" domain={["auto", "auto"]} />
                           <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} />
                           {avgYield != null && <ReferenceLine y={avgYield} stroke={COLORS.amber} strokeDasharray="4 4" label={{ value: "avg", fill: COLORS.amber, fontSize: 11 }} />}
                           <Line type="monotone" dataKey="yield" name="TTM yield" stroke={COLORS.green} strokeWidth={2} dot={{ r: 3 }} />
+                          {avgYield != null && <Line type="monotone" dataKey="avgYield" name={`${r.criteria.yieldLookbackQuarters}Q average`} stroke={COLORS.amber} strokeWidth={1} strokeDasharray="4 4" dot={false} legendType="none" />}
                         </LineChart>
                       </ResponsiveContainer>
                       {yieldSeries.length < 2 && <div style={{ fontSize: 11, color: COLORS.textMuted }}>Builds a point each check-in -- needs more history yet.</div>}
