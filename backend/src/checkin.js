@@ -89,22 +89,34 @@ async function refreshDividends(holding, data) {
     }
   }
 
-  // Ann. div/share: sum confirmed pay-dates by inferred payment frequency (median
-  // gap between real pay-dates), using rows already deduplicated of exact-duplicate
-  // amounts by groupByPayDate -- see dividendsSg.js for why this replaced trusting
-  // the site's own "Annual dividend per unit" stat (verified wrong against real cash).
+  // Ann. div/share: sum confirmed pay-dates by inferred payment frequency, using
+  // rows already deduplicated of exact-duplicate amounts by groupByPayDate -- see
+  // dividendsSg.js for why this replaced trusting the site's own "Annual dividend
+  // per unit" stat (verified wrong against real cash).
+  //
+  // Frequency is inferred from the AVERAGE gap across the full date span (total
+  // span / number of gaps), then snapped to the nearest realistic SGX cadence
+  // (1/2/4/12 per year) -- NOT the median of individual gaps. A true semi-annual
+  // payer's gaps alternate between short (~100d, within-year) and long (~260d,
+  // across-year); with an odd number of historical gaps the median can land on
+  // the short side and misclassify it as quarterly. Confirmed on U11 (2026-09-22):
+  // median-gap logic inferred 4 payments/year and silently summed 2 years' worth
+  // ($3.86) instead of the correct trailing 2 payments ($1.59) -- the average/span
+  // approach isn't fooled by that alternating pattern and gave the right answer
+  // for both U11 (2/yr, $1.59) and CLR (2/yr, $0.045), verified against real data.
   const allPayDatesSorted = [...new Set(grouped.map((g) => g.payDate))].sort();
   let paymentsPerYear = 2; // sensible default (semi-annual) if not enough history to infer
   if (allPayDatesSorted.length >= 2) {
-    const gaps = [];
-    for (let i = 1; i < allPayDatesSorted.length; i++) {
-      gaps.push((new Date(allPayDatesSorted[i]) - new Date(allPayDatesSorted[i - 1])) / 86400000);
-    }
-    const medianGap = gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)];
-    if (medianGap < 60) paymentsPerYear = 12;
-    else if (medianGap < 130) paymentsPerYear = 4;
-    else if (medianGap < 270) paymentsPerYear = 2;
-    else paymentsPerYear = 1;
+    const first = new Date(allPayDatesSorted[0]);
+    const last = new Date(allPayDatesSorted[allPayDatesSorted.length - 1]);
+    const spanDays = (last - first) / 86400000;
+    const avgGap = spanDays / (allPayDatesSorted.length - 1);
+    const rawPerYear = avgGap > 0 ? 365.25 / avgGap : 2;
+    const buckets = [1, 2, 4, 12];
+    paymentsPerYear = buckets.reduce(
+      (best, b) => (Math.abs(b - rawPerYear) < Math.abs(best - rawPerYear) ? b : best),
+      buckets[0]
+    );
   }
   const confirmedPastPayDates = allPayDatesSorted.filter((d) => d <= today).slice(-paymentsPerYear);
   const trailingSum = grouped
