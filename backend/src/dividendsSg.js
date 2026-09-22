@@ -6,20 +6,20 @@ import * as cheerio from "cheerio";
  * needed. If the site's markup changes, this is the one place to fix it --
  * the row-parsing loop below is the fragile part.
  *
- * Returns { rows, ttmYield, annualDivPerUnit } or null on failure.
+ * Returns { rows: [{amount, exDate, payDate}] } or null on failure.
  *
- * IMPORTANT: `rows` is the raw per-tranche table -- dividends.sg sometimes
- * lists more than one row for the exact same ex-date/pay-date (multiple
- * source reports, occasionally an outright duplicate amount). Summing every
- * row blindly (which this file used to do via groupByPayDate) can overstate
- * the real distribution -- confirmed against CLR's 30 Jul 2026 distribution,
- * where the site lists 4 rows for one payout including a duplicated 0.0067
- * amount, inflating a naive sum by ~60% versus the site's own published
- * total. So `rows` should now only be trusted for DATES (calendar entries,
- * ex-date cooldown tracking) -- never for summed amounts. For the actual
- * per-unit distribution total and yield, use `annualDivPerUnit`/`ttmYield`
- * below, which are dividends.sg's own already-deduplicated, published
- * figures -- scraped directly off the page rather than re-derived here.
+ * HISTORY / WHY THIS FILE LOOKS THE WAY IT DOES:
+ * We used to also scrape the page's own summary stats ("TTM Dividend Yield",
+ * "Annual dividend per unit") and treat them as more trustworthy than summing
+ * the raw rows ourselves. That turned out to be WRONG -- verified directly
+ * against real cash CLR paid out (Sep 2026): the site's own "Annual dividend
+ * per unit" figure (0.0316) undercounted a real distribution, while summing
+ * the raw rows -- after removing an exact-duplicate row the site lists twice
+ * -- landed exactly on the real amount received (0.023/share, confirmed to
+ * the cent against 3 actual bank credits). So: don't trust the site's own
+ * summary stats, and don't blindly sum every raw row either (duplicates).
+ * Dedup exact-duplicate rows within a distribution, then sum what's left.
+ * That's the only rule this file follows now -- simpler, and verified.
  */
 export async function fetchDividendsSg(ticker) {
   try {
@@ -47,37 +47,7 @@ export async function fetchDividendsSg(ticker) {
       }
     });
 
-    const bodyText = $.text();
-
-    // TTM yield -- the site's wording has changed over time (was "TTM Dividend
-    // Yield: X%", now seen as "Yield · past 12 months: X% TTM"). Try known
-    // phrasings; log clearly if none match so this doesn't silently go stale again.
-    let ttmYield = null;
-    const ttmPatterns = [
-      /TTM Dividend Yield:\s*([\d.]+)%/,
-      /Yield[^\d%]{0,40}past 12 months[^\d%]{0,20}?([\d.]+)%/i,
-      /past 12 months[^\d%]{0,40}?([\d.]+)%\s*TTM/i,
-    ];
-    for (const re of ttmPatterns) {
-      const m = bodyText.match(re);
-      if (m) { ttmYield = parseFloat(m[1]); break; }
-    }
-
-    // Annual dividend per unit -- dividends.sg's OWN computed, deduplicated total
-    // (shown per calendar-year section, most recent year first). We deliberately
-    // use this instead of summing `rows` ourselves -- see note above.
-    let annualDivPerUnit = null;
-    const divMatch = bodyText.match(/Annual dividend per unit[^\d]{0,20}?([\d.]+)/i);
-    if (divMatch) annualDivPerUnit = parseFloat(divMatch[1]);
-
-    if (ttmYield === null) {
-      console.warn(`[dividendsSg] TTM yield text not found on page -- site markup may have changed again`);
-    }
-    if (annualDivPerUnit === null) {
-      console.warn(`[dividendsSg] "Annual dividend per unit" text not found on page -- site markup may have changed`);
-    }
-
-    return { rows, ttmYield, annualDivPerUnit };
+    return { rows };
   } catch (e) {
     console.error(`fetchDividendsSg(${ticker}) failed:`, e.message);
     return null;
@@ -85,24 +55,28 @@ export async function fetchDividendsSg(ticker) {
 }
 
 /**
- * Groups raw per-tranche rows (dividends.sg lists each distribution
- * component separately) into one entry per actual pay date, and returns
- * the most recent N distinct pay-date entries with their combined amount.
+ * Groups raw per-tranche rows into one entry per actual pay date.
  *
- * NOTE: this sums every row sharing an (exDate, payDate) key, which can
- * double-count duplicate/multi-source rows (see the big comment above).
- * Only use the *dates* this produces for calendar/cooldown purposes --
- * don't treat the summed `amount` as authoritative. It's still used as a
- * rough per-share estimate for *future/estimated* calendar entries, where
- * exactness matters less than having a plausible number until a confirmed
- * figure arrives.
+ * IMPORTANT: dividends.sg sometimes lists an EXACT duplicate row (same
+ * amount, same ex-date, same pay-date) alongside genuinely distinct tranches
+ * -- confirmed on CLR's 30 Jul 2026 distribution, which listed 0.0067 twice
+ * plus two other distinct amounts (0.0038, 0.0125). The real per-unit payout
+ * (verified against actual cash received) was 0.0067 + 0.0038 + 0.0125 --
+ * i.e. each DISTINCT amount counted once, not "sum everything" and not
+ * "drop every amount that repeats" (the site's own summary does the latter,
+ * which is why we don't use it -- see fetchDividendsSg above).
+ *
+ * So: within a (exDate, payDate) group, keep each distinct amount value
+ * only once, then sum the distinct amounts.
  */
 export function groupByPayDate(rows) {
   const byKey = new Map();
   for (const r of rows) {
     const key = `${r.exDate}|${r.payDate}`;
-    if (!byKey.has(key)) byKey.set(key, { exDate: r.exDate, payDate: r.payDate, amount: 0 });
-    byKey.get(key).amount += r.amount;
+    if (!byKey.has(key)) byKey.set(key, { exDate: r.exDate, payDate: r.payDate, amounts: new Set() });
+    byKey.get(key).amounts.add(r.amount);
   }
-  return [...byKey.values()].sort((a, b) => b.payDate.localeCompare(a.payDate));
+  return [...byKey.values()]
+    .map((g) => ({ exDate: g.exDate, payDate: g.payDate, amount: [...g.amounts].reduce((s, a) => s + a, 0) }))
+    .sort((a, b) => b.payDate.localeCompare(a.payDate));
 }

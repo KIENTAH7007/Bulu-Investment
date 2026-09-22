@@ -4,15 +4,42 @@ import { fetchDividendsSg, groupByPayDate } from "./dividendsSg.js";
 import { evaluateIndexDca, evaluateReit, evaluateBankPb, rsi } from "./criteria.js";
 import { sendTelegramMessage } from "./telegram.js";
 
-const TICKER_ICON = { CLR: "\ud83d\udcb0", G3B: "\ud83d\udcc8", U11: "\ud83c\udfe6", D05: "\ud83c\udfe6" };
+const TICKER_ICON = { CLR: "💰", G3B: "📈", U11: "🏦", D05: "🏦" };
+
+// Sanity bounds on a computed Ann. div/share value, checked as an implied
+// yield at current price. Catches obviously-broken scraped data (a stray
+// row, a mis-parsed amount) before it ever reaches the displayed number or
+// the buy-criteria gates. Outside this range for an SGX bank/REIT is not
+// plausible -- reject rather than silently apply.
+const PLAUSIBLE_YIELD_MIN = 0.3; // %
+const PLAUSIBLE_YIELD_MAX = 15; // %
+// A change this large from the previous stored value is still applied (it's
+// been through the plausibility check above and the exact-duplicate dedup),
+// but flagged loudly in the Journal so it doesn't slip by unnoticed -- this
+// is exactly the kind of jump that started this week's investigation.
+const LARGE_JUMP_PCT = 25;
+
+// How stale bank P/B research inputs (book value, historical average/band)
+// can get before we start reminding -- these are manually refreshed, not
+// scraped, so nothing else will ever flag them going stale on its own.
+const PB_STALE_AFTER_DAYS = 100; // roughly one quarter
+const PB_REMINDER_COOLDOWN_DAYS = 30; // don't repeat the reminder every check-in
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function daysBetween(a, b) {
+  return Math.floor((new Date(a) - new Date(b)) / 86400000);
+}
+
 function appendPricePoint(priceHistory, date, close) {
   const filtered = (priceHistory || []).filter((p) => p.date !== date);
   return [...filtered, { date, close }].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function journal(data, text) {
+  data.alertLog.unshift({ date: todayISO(), text });
 }
 
 /**
@@ -36,17 +63,9 @@ async function refreshDividends(holding, data) {
   const result = await fetchDividendsSg(holding.id);
   if (!result) {
     console.warn(`[${holding.id}] dividends.sg fetch returned nothing -- check network/page structure`);
-  } else if (result.ttmYield === null) {
-    console.warn(`[${holding.id}] dividends.sg fetched OK but TTM yield text wasn't found on the page -- site markup may have changed`);
-  } else {
-    console.log(`[${holding.id}] TTM yield scraped: ${result.ttmYield}%`);
+    journal(data, `⚠️ ${holding.id}: dividend data fetch failed this check-in (network or site issue) -- Ann. div/share and dividend calendar left unchanged.`);
   }
   const grouped = result ? groupByPayDate(result.rows) : [];
-
-  if (result && result.ttmYield !== null) {
-    holding.yieldHistory = [...(holding.yieldHistory || []).filter((y) => y.date !== todayISO()), { date: todayISO(), yield: result.ttmYield }].slice(-100);
-  }
-
   const today = todayISO();
   const futureGrouped = grouped.filter((g) => g.payDate >= today);
   const pastGrouped = grouped.filter((g) => g.payDate < today).sort((a, b) => b.payDate.localeCompare(a.payDate));
@@ -62,45 +81,51 @@ async function refreshDividends(holding, data) {
     }
   }
 
-  // Ann. div/share: prefer dividends.sg's OWN published "Annual dividend per unit"
-  // figure (already deduplicated by them) over re-summing the raw rows ourselves.
-  // Summing raw rows can double-count duplicate/multi-source rows the site
-  // sometimes lists for one distribution -- confirmed on CLR's 30 Jul 2026 payout,
-  // where a duplicated row inflated our own sum to 0.0517 vs the site's real 0.0316.
-  if (result && result.annualDivPerUnit !== null && result.annualDivPerUnit > 0) {
-    const rounded = Math.round(result.annualDivPerUnit * 10000) / 10000;
-    if (rounded !== holding.annualDiv) {
-      console.log(`[${holding.id}] Ann. div/share updated: ${holding.annualDiv} -> ${rounded} (dividends.sg's own published "Annual dividend per unit")`);
-      holding.annualDiv = rounded;
+  // Ann. div/share: sum confirmed pay-dates by inferred payment frequency (median
+  // gap between real pay-dates), using rows already deduplicated of exact-duplicate
+  // amounts by groupByPayDate -- see dividendsSg.js for why this replaced trusting
+  // the site's own "Annual dividend per unit" stat (verified wrong against real cash).
+  const allPayDatesSorted = [...new Set(grouped.map((g) => g.payDate))].sort();
+  let paymentsPerYear = 2; // sensible default (semi-annual) if not enough history to infer
+  if (allPayDatesSorted.length >= 2) {
+    const gaps = [];
+    for (let i = 1; i < allPayDatesSorted.length; i++) {
+      gaps.push((new Date(allPayDatesSorted[i]) - new Date(allPayDatesSorted[i - 1])) / 86400000);
     }
-  } else {
-    // Fallback only -- used if the site's own stat couldn't be scraped this run
-    // (markup change, network hiccup). Same payment-frequency-aware summing as
-    // before; still vulnerable to the duplicate-row issue above, so it's a
-    // last resort, not the primary path.
-    console.warn(`[${holding.id}] couldn't read dividends.sg's own "Annual dividend per unit" -- falling back to summing raw rows ourselves (may overstate on duplicate/multi-source rows)`);
-    const allPayDatesSorted = [...new Set(grouped.map((g) => g.payDate))].sort();
-    let paymentsPerYear = 2; // sensible default (semi-annual) if not enough history to infer
-    if (allPayDatesSorted.length >= 2) {
-      const gaps = [];
-      for (let i = 1; i < allPayDatesSorted.length; i++) {
-        gaps.push((new Date(allPayDatesSorted[i]) - new Date(allPayDatesSorted[i - 1])) / 86400000);
+    const medianGap = gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)];
+    if (medianGap < 60) paymentsPerYear = 12;
+    else if (medianGap < 130) paymentsPerYear = 4;
+    else if (medianGap < 270) paymentsPerYear = 2;
+    else paymentsPerYear = 1;
+  }
+  const confirmedPastPayDates = allPayDatesSorted.filter((d) => d <= today).slice(-paymentsPerYear);
+  const trailingSum = grouped
+    .filter((g) => confirmedPastPayDates.includes(g.payDate))
+    .reduce((s, g) => s + g.amount, 0);
+
+  if (trailingSum > 0 && confirmedPastPayDates.length === paymentsPerYear) {
+    const candidate = Math.round(trailingSum * 10000) / 10000;
+    const impliedYield = holding.price > 0 ? (candidate / holding.price) * 100 : null;
+
+    if (impliedYield !== null && (impliedYield < PLAUSIBLE_YIELD_MIN || impliedYield > PLAUSIBLE_YIELD_MAX)) {
+      // Fails the sanity check -- don't apply, flag it instead of silently corrupting the number.
+      journal(data, `⚠️ ${holding.id}: computed Ann. div/share $${candidate} implies an implausible ${impliedYield.toFixed(1)}% yield at the current price -- REJECTED, keeping $${holding.annualDiv}. Please check dividends.sg for ${holding.id} manually.`);
+    } else if (candidate !== holding.annualDiv) {
+      const prev = holding.annualDiv;
+      const jumpPct = prev > 0 ? Math.abs(candidate - prev) / prev * 100 : null;
+      console.log(`[${holding.id}] Ann. div/share updated: ${prev} -> ${candidate} (last ${paymentsPerYear} confirmed payment(s), duplicate-row-safe sum)`);
+      holding.annualDiv = candidate;
+      // Event-based yield snapshot -- only recorded when the confirmed distribution
+      // total actually changes (roughly once per real payment cycle), NOT once a day.
+      // This is what makes "yieldLookbackQuarters" genuinely mean quarters: averaging
+      // the last N of these actually spans N real distribution cycles, not N days.
+      if (holding.price > 0) {
+        holding.yieldHistory = [...(holding.yieldHistory || []), { date: today, yield: Math.round((candidate / holding.price) * 10000) / 100 }].slice(-40);
       }
-      const medianGap = gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)];
-      if (medianGap < 60) paymentsPerYear = 12;
-      else if (medianGap < 130) paymentsPerYear = 4;
-      else if (medianGap < 270) paymentsPerYear = 2;
-      else paymentsPerYear = 1;
-    }
-    const confirmedPastPayDates = allPayDatesSorted.filter((d) => d <= today).slice(-paymentsPerYear);
-    const trailingSum = grouped
-      .filter((g) => confirmedPastPayDates.includes(g.payDate))
-      .reduce((s, g) => s + g.amount, 0);
-    if (trailingSum > 0 && confirmedPastPayDates.length === paymentsPerYear) {
-      const rounded = Math.round(trailingSum * 10000) / 10000;
-      if (rounded !== holding.annualDiv) {
-        console.log(`[${holding.id}] Ann. div/share updated (fallback): ${holding.annualDiv} -> ${rounded} (last ${paymentsPerYear} confirmed payment(s) summed from dividends.sg raw rows)`);
-        holding.annualDiv = rounded;
+      if (jumpPct !== null && jumpPct > LARGE_JUMP_PCT) {
+        journal(data, `⚠️ ${holding.id}: Ann. div/share changed by ${jumpPct.toFixed(0)}% ($${prev} → $${candidate}). Applied (passed the plausibility check), but a change this large is worth a quick sanity check against your actual dividend statement.`);
+      } else {
+        journal(data, `${holding.id}: Ann. div/share updated to $${candidate} (confirmed dividends.sg data).`);
       }
     }
   }
@@ -117,22 +142,15 @@ async function refreshDividends(holding, data) {
         uid: `dsg-${holding.id}-${div.exDate}`, id: holding.id, exDate: div.exDate, payDate: div.payDate,
         perShare: div.amount, estimated: false, source: "dividends.sg (confirmed)",
       });
-      data.alertLog.unshift({ date: today, text: `Confirmed dividend found for ${holding.id}: ex ${div.exDate}, pay ${div.payDate}, $${div.amount}/share` });
+      journal(data, `Confirmed dividend found for ${holding.id}: ex ${div.exDate}, pay ${div.payDate}, $${div.amount}/share`);
     }
   }
 
   // No confirmed or existing estimated upcoming entry? Estimate one from history.
-  // Important: don't just take the single most-recent past entry and add a year --
-  // for a semi-annual/quarterly payer, "most recent past" might be the WRONG half of
-  // the cycle depending on where today falls (e.g. today is Jul, most recent past is
-  // Jan -> naive +1yr gives next Jan, skipping right over the correct upcoming Jul
-  // date). Instead: project every past entry forward by exactly 1 year, keep only the
-  // ones that land in the future, and take the earliest of those.
-  //
-  // Only a CONFIRMED entry blocks re-estimation. An existing *estimated* entry gets
-  // recalculated fresh every check-in -- otherwise a wrong estimate (e.g. from a
-  // scraper bug that's since been fixed) would stay stuck forever, since "there's
-  // already an upcoming entry" would look satisfied even though it's wrong.
+  // Project every past entry forward by exactly 1 year, keep only future-dated
+  // results, take the earliest -- avoids picking the wrong half of a semi-annual
+  // cycle depending on where "today" falls. Only a CONFIRMED entry blocks
+  // re-estimation, so a stale estimate always gets recomputed fresh.
   const hasConfirmedUpcoming = data.dividendCalendar.some((c) => c.id === holding.id && c.payDate >= today && !c.estimated);
   if (!hasConfirmedUpcoming && pastGrouped.length > 0) {
     const candidates = pastGrouped
@@ -140,13 +158,24 @@ async function refreshDividends(holding, data) {
       .filter((c) => c.payDate >= today)
       .sort((a, b) => a.payDate.localeCompare(b.payDate));
     const best = candidates[0] || { exDate: addOneYear(pastGrouped[0].exDate), payDate: addOneYear(pastGrouped[0].payDate), amount: pastGrouped[0].amount };
-    // Replace any existing (stale) estimated upcoming entry for this holding with the freshly computed one
     data.dividendCalendar = data.dividendCalendar.filter((c) => !(c.id === holding.id && c.estimated && c.payDate >= today));
     data.dividendCalendar.push({
       uid: `est-${holding.id}-${best.exDate}`, id: holding.id, exDate: best.exDate, payDate: best.payDate,
       perShare: best.amount, estimated: true, source: `pattern estimate from last year's same cycle`,
     });
   }
+}
+
+function checkPbStaleness(holding, data) {
+  if (holding.criteria?.type !== "bank-pb") return;
+  const today = todayISO();
+  const updatedAt = holding.criteria.pbUpdatedAt;
+  const isStale = !updatedAt || daysBetween(today, updatedAt) > PB_STALE_AFTER_DAYS;
+  if (!isStale) return;
+  const lastFlagged = holding.criteria.pbStalenessLastFlagged;
+  if (lastFlagged && daysBetween(today, lastFlagged) < PB_REMINDER_COOLDOWN_DAYS) return;
+  holding.criteria.pbStalenessLastFlagged = today;
+  journal(data, `⚠️ ${holding.id}: P/B research inputs (book value / historical average / cheap band) ${updatedAt ? `haven't been refreshed since ${updatedAt}` : "have never been refreshed"} -- ask Claude to update them after the next quarterly results.`);
 }
 
 function isDcaDay(data) {
@@ -157,11 +186,11 @@ function isDcaDay(data) {
 }
 
 function buildAlertText(ticker, tier, result, holding, rsiValue) {
-  const icon = TICKER_ICON[ticker] || "\ud83d\udd14";
+  const icon = TICKER_ICON[ticker] || "🔔";
   const label = result.purchaseType === "dca" ? "Scheduled DCA" : `Lump sum opportunity (Tier ${tier})`;
   const reason = tier === 1 ? result.reason1 : result.reason2;
-  let plain = `${icon} ${ticker} \u2014 ${label}\n${reason}`;
-  let html = `${icon} <b>${ticker}</b> \u2014 ${label}\n${reason}`;
+  let plain = `${icon} ${ticker} — ${label}\n${reason}`;
+  let html = `${icon} <b>${ticker}</b> — ${label}\n${reason}`;
   if (result.purchaseType === "lumpsum" && rsiValue !== null) {
     const rsiLine = `\nRSI ${rsiValue.toFixed(0)}${rsiValue < 40 ? " (mildly oversold, adds confidence)" : ""}`;
     plain += rsiLine;
@@ -172,8 +201,8 @@ function buildAlertText(ticker, tier, result, holding, rsiValue) {
 
 function annotateDeliveryStatus(plainText, sendResult) {
   if (sendResult && sendResult.ok) return plainText; // delivered fine, no need to clutter the journal
-  if (sendResult && sendResult.skipped) return `${plainText}\n\u26a0\ufe0f Telegram not configured -- alert NOT sent`;
-  return `${plainText}\n\u26a0\ufe0f Telegram send FAILED -- check Railway logs`;
+  if (sendResult && sendResult.skipped) return `${plainText}\n⚠️ Telegram not configured -- alert NOT sent`;
+  return `${plainText}\n⚠️ Telegram send FAILED -- check Railway logs`;
 }
 
 export async function runCheckin(trigger = "scheduled") {
@@ -184,19 +213,27 @@ export async function runCheckin(trigger = "scheduled") {
     await ensureHistory(holding);
 
     const priceInfo = await fetchLatestPrice(holding.id);
+    let priceStale = false;
     if (priceInfo) {
       holding.price = priceInfo.price;
       holding.priceHistory = appendPricePoint(holding.priceHistory, priceInfo.asOf, priceInfo.price);
+    } else {
+      priceStale = true;
+      console.warn(`[${holding.id}] price fetch failed -- keeping last known price, skipping buy-criteria evaluation this run`);
+      journal(data, `⚠️ ${holding.id}: price fetch failed this check-in -- kept last known price ($${holding.price}), buy-criteria evaluation skipped for this run to avoid gating on a stale price.`);
     }
 
     await refreshDividends(holding, data);
+    checkPbStaleness(holding, data);
 
     const critType = holding.criteria?.type;
     let result = null;
-    if (critType === "index-dca") result = evaluateIndexDca(holding, { isDcaDay: isDcaDay(data) });
-    else if (critType === "reit") result = evaluateReit(holding);
-    else if (critType === "bank-pb") result = evaluateBankPb(holding);
-    if (!result) continue; // no buy-criteria set for this holding yet -- price/dividends were still refreshed above
+    if (!priceStale) {
+      if (critType === "index-dca") result = evaluateIndexDca(holding, { isDcaDay: isDcaDay(data) });
+      else if (critType === "reit") result = evaluateReit(holding);
+      else if (critType === "bank-pb") result = evaluateBankPb(holding);
+    }
+    if (!result) continue; // no buy-criteria set, or evaluation skipped due to stale price -- price/dividends were still refreshed above
     holding.trendWeak = !!result.trendWeak;
 
     const rsiValue = rsi(holding.priceHistory);
@@ -213,7 +250,7 @@ export async function runCheckin(trigger = "scheduled") {
       if (prevState.tier1LastFired !== today) {
         const { plain, html } = buildAlertText(holding.id, 1, result, holding, rsiValue);
         const sendResult = await sendTelegramMessage(html);
-        data.alertLog.unshift({ date: today, text: annotateDeliveryStatus(plain, sendResult) });
+        journal(data, annotateDeliveryStatus(plain, sendResult));
         alertsFired.push({ ticker: holding.id, tier: 1, telegramSent: !!sendResult.ok });
         if (sendResult.ok) newState.tier1LastFired = today;
       }
@@ -227,7 +264,7 @@ export async function runCheckin(trigger = "scheduled") {
       if (prevState.tier2LastFired !== today) {
         const { plain, html } = buildAlertText(holding.id, 2, result, holding, rsiValue);
         const sendResult = await sendTelegramMessage(html);
-        data.alertLog.unshift({ date: today, text: annotateDeliveryStatus(plain, sendResult) });
+        journal(data, annotateDeliveryStatus(plain, sendResult));
         alertsFired.push({ ticker: holding.id, tier: 2, telegramSent: !!sendResult.ok });
         if (sendResult.ok) newState.tier2LastFired = today;
       }
@@ -238,8 +275,8 @@ export async function runCheckin(trigger = "scheduled") {
     holding.alertState = newState;
   }
 
-  // Watchlist: just refresh price + append to history, no criteria evaluated (Phase 2 scope is core holdings only)
-  for (const w of data.watchlist) {
+  // Watchlist: just refresh price + append to history, no criteria evaluated
+  for (const w of data.watchlist || []) {
     const priceInfo = await fetchLatestPrice(w.id);
     if (priceInfo) {
       w.price = priceInfo.price;
