@@ -1,12 +1,27 @@
 import * as cheerio from "cheerio";
 
 /**
- * Scrapes https://www.dividends.sg/view/{TICKER} -- a plain server-rendered
- * table (Year / Yield / Total / Amount / Ex Date / Pay Date). No JS rendering
- * needed. If the site's markup changes, this is the one place to fix it --
- * the row-parsing loop below is the fragile part.
+ * Scrapes https://www.dividends.sg/view/{TICKER}.
  *
- * Returns { rows: [{amount, exDate, payDate}] } or null on failure.
+ * As of 2026-09-19 dividends.sg redesigned this page's dividend-history
+ * markup: it used to be a plain <table><tr><td> per row; it is now a set of
+ * <article class="dividend-history-event"> blocks (grouped under
+ * <details class="dividend-history-year"> per year), each holding:
+ *   <p class="dividend-history-event__amount">SGD 0.0067</p>
+ *   <dl class="dividend-event-dates">
+ *     <div><dt>Ex-date</dt><dd><time datetime="2026-07-30">...</time></dd></div>
+ *     <div><dt>Pays</dt><dd><time datetime="2026-08-28">...</time></dd></div>
+ *   </dl>
+ * Confirmed against the live page's raw HTML (not just the rendered view --
+ * fetched the exact bytes and located a known amount inside them). We match
+ * Ex-date/Pay-date by the <dt> label text rather than fixed column position,
+ * so a future reordering of the two rows doesn't silently break this again
+ * the way the old fixed <table><tr><td> selector did on this redesign.
+ *
+ * Returns { rows: [{amount, exDate, payDate}] } or null on a hard fetch
+ * failure. A successful-but-empty result (rows: []) is possible if the site
+ * changes markup again -- callers should treat that as a signal too, not
+ * just null (see checkin.js's refreshDividends, which now warns on both).
  *
  * HISTORY / WHY THIS FILE LOOKS THE WAY IT DOES:
  * We used to also scrape the page's own summary stats ("TTM Dividend Yield",
@@ -17,9 +32,11 @@ import * as cheerio from "cheerio";
  * the raw rows -- after removing an exact-duplicate row the site lists twice
  * -- landed exactly on the real amount received (0.023/share, confirmed to
  * the cent against 3 actual bank credits). So: don't trust the site's own
- * summary stats, and don't blindly sum every raw row either (duplicates).
- * Dedup exact-duplicate rows within a distribution, then sum what's left.
- * That's the only rule this file follows now -- simpler, and verified.
+ * summary stats (still true post-redesign -- the same figures now live in
+ * <summary class="dividend-year-header"><span class="dividend-year-header__metrics">,
+ * and we still ignore that block entirely), and don't blindly sum every raw
+ * row either (duplicates). Dedup exact-duplicate rows within a distribution,
+ * then sum what's left -- see groupByPayDate.
  */
 export async function fetchDividendsSg(ticker) {
   try {
@@ -31,18 +48,29 @@ export async function fetchDividendsSg(ticker) {
     const $ = cheerio.load(html);
 
     const rows = [];
-    $("table tr").each((_, el) => {
-      const cells = $(el).find("td");
-      const n = cells.length;
-      if (n < 4) return; // need at least Amount, Ex Date, Pay Date, Particulars
-      // Index from the RIGHT: the site uses rowspan for Year/Yield/Total on the first
-      // row of each group, so continuation rows have fewer leading columns -- but the
-      // last 4 columns (Amount, Ex Date, Pay Date, Particulars) are always present.
-      const amountText = $(cells[n - 4]).text().trim().replace("SGD", "").trim();
-      const exDate = $(cells[n - 3]).text().trim();
-      const payDate = $(cells[n - 2]).text().trim();
+    $("article.dividend-history-event").each((_, el) => {
+      const amountText = $(el)
+        .find(".dividend-history-event__amount")
+        .first()
+        .text()
+        .trim()
+        .replace("SGD", "")
+        .trim();
       const amount = parseFloat(amountText);
-      if (!isNaN(amount) && /^\d{4}-\d{2}-\d{2}$/.test(exDate) && /^\d{4}-\d{2}-\d{2}$/.test(payDate)) {
+
+      let exDate = null;
+      let payDate = null;
+      $(el)
+        .find("dl.dividend-event-dates > div")
+        .each((_, div) => {
+          const label = $(div).find("dt").text().trim().toLowerCase();
+          const datetime = $(div).find("time").attr("datetime");
+          if (!datetime || !/^\d{4}-\d{2}-\d{2}$/.test(datetime)) return;
+          if (label.startsWith("ex")) exDate = datetime;
+          else if (label.startsWith("pay")) payDate = datetime;
+        });
+
+      if (!isNaN(amount) && exDate && payDate) {
         rows.push({ amount, exDate, payDate });
       }
     });

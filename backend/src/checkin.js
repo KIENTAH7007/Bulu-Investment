@@ -64,6 +64,14 @@ async function refreshDividends(holding, data) {
   if (!result) {
     console.warn(`[${holding.id}] dividends.sg fetch returned nothing -- check network/page structure`);
     journal(data, `⚠️ ${holding.id}: dividend data fetch failed this check-in (network or site issue) -- Ann. div/share and dividend calendar left unchanged.`);
+  } else if (result.rows.length === 0) {
+    // Fetch succeeded (page loaded) but the scraper found zero dividend rows --
+    // this is what actually happened on 2026-09-22 when dividends.sg redesigned
+    // its markup and the old <table> selector silently matched nothing. That
+    // went unnoticed for days because only the !result branch above was
+    // journaled. Flag this "soft failure" case too so it can never go silent again.
+    console.warn(`[${holding.id}] dividends.sg fetch succeeded but found zero dividend rows -- site markup may have changed`);
+    journal(data, `⚠️ ${holding.id}: dividends.sg page loaded fine but no dividend rows were found on it -- the site's markup may have changed again. Ann. div/share and dividend calendar left unchanged. Worth checking dividends.sg for ${holding.id} manually.`);
   }
   const grouped = result ? groupByPayDate(result.rows) : [];
   const today = todayISO();
