@@ -62,34 +62,46 @@ async function refreshDividends(holding, data) {
     }
   }
 
-  // Auto-update Ann. div/share from real confirmed distributions -- but do it by
-  // COUNT of payments (inferred from actual payment spacing), not a calendar-day
-  // window. A fixed 365-day window can accidentally capture 3 payments instead of
-  // 2 for a semi-annual payer if the check-in happens to run right on a payment
-  // anniversary -- which is exactly what caused the CLR/U11 spike. Counting by
-  // payment frequency instead makes this immune to what day "today" happens to be.
-  const allPayDatesSorted = [...new Set(grouped.map((g) => g.payDate))].sort();
-  let paymentsPerYear = 2; // sensible default (semi-annual) if not enough history to infer
-  if (allPayDatesSorted.length >= 2) {
-    const gaps = [];
-    for (let i = 1; i < allPayDatesSorted.length; i++) {
-      gaps.push((new Date(allPayDatesSorted[i]) - new Date(allPayDatesSorted[i - 1])) / 86400000);
-    }
-    const medianGap = gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)];
-    if (medianGap < 60) paymentsPerYear = 12;
-    else if (medianGap < 130) paymentsPerYear = 4;
-    else if (medianGap < 270) paymentsPerYear = 2;
-    else paymentsPerYear = 1;
-  }
-  const confirmedPastPayDates = allPayDatesSorted.filter((d) => d <= today).slice(-paymentsPerYear);
-  const trailingSum = grouped
-    .filter((g) => confirmedPastPayDates.includes(g.payDate))
-    .reduce((s, g) => s + g.amount, 0);
-  if (trailingSum > 0 && confirmedPastPayDates.length === paymentsPerYear) {
-    const rounded = Math.round(trailingSum * 10000) / 10000;
+  // Ann. div/share: prefer dividends.sg's OWN published "Annual dividend per unit"
+  // figure (already deduplicated by them) over re-summing the raw rows ourselves.
+  // Summing raw rows can double-count duplicate/multi-source rows the site
+  // sometimes lists for one distribution -- confirmed on CLR's 30 Jul 2026 payout,
+  // where a duplicated row inflated our own sum to 0.0517 vs the site's real 0.0316.
+  if (result && result.annualDivPerUnit !== null && result.annualDivPerUnit > 0) {
+    const rounded = Math.round(result.annualDivPerUnit * 10000) / 10000;
     if (rounded !== holding.annualDiv) {
-      console.log(`[${holding.id}] Ann. div/share updated: ${holding.annualDiv} -> ${rounded} (last ${paymentsPerYear} confirmed payment(s) from dividends.sg)`);
+      console.log(`[${holding.id}] Ann. div/share updated: ${holding.annualDiv} -> ${rounded} (dividends.sg's own published "Annual dividend per unit")`);
       holding.annualDiv = rounded;
+    }
+  } else {
+    // Fallback only -- used if the site's own stat couldn't be scraped this run
+    // (markup change, network hiccup). Same payment-frequency-aware summing as
+    // before; still vulnerable to the duplicate-row issue above, so it's a
+    // last resort, not the primary path.
+    console.warn(`[${holding.id}] couldn't read dividends.sg's own "Annual dividend per unit" -- falling back to summing raw rows ourselves (may overstate on duplicate/multi-source rows)`);
+    const allPayDatesSorted = [...new Set(grouped.map((g) => g.payDate))].sort();
+    let paymentsPerYear = 2; // sensible default (semi-annual) if not enough history to infer
+    if (allPayDatesSorted.length >= 2) {
+      const gaps = [];
+      for (let i = 1; i < allPayDatesSorted.length; i++) {
+        gaps.push((new Date(allPayDatesSorted[i]) - new Date(allPayDatesSorted[i - 1])) / 86400000);
+      }
+      const medianGap = gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)];
+      if (medianGap < 60) paymentsPerYear = 12;
+      else if (medianGap < 130) paymentsPerYear = 4;
+      else if (medianGap < 270) paymentsPerYear = 2;
+      else paymentsPerYear = 1;
+    }
+    const confirmedPastPayDates = allPayDatesSorted.filter((d) => d <= today).slice(-paymentsPerYear);
+    const trailingSum = grouped
+      .filter((g) => confirmedPastPayDates.includes(g.payDate))
+      .reduce((s, g) => s + g.amount, 0);
+    if (trailingSum > 0 && confirmedPastPayDates.length === paymentsPerYear) {
+      const rounded = Math.round(trailingSum * 10000) / 10000;
+      if (rounded !== holding.annualDiv) {
+        console.log(`[${holding.id}] Ann. div/share updated (fallback): ${holding.annualDiv} -> ${rounded} (last ${paymentsPerYear} confirmed payment(s) summed from dividends.sg raw rows)`);
+        holding.annualDiv = rounded;
+      }
     }
   }
 
