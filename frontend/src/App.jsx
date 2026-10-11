@@ -19,6 +19,8 @@ const TICKER_LOOKUP = {
   G3B: "Amova Singapore STI ETF", CLR: "Lion-Phillip S-REIT ETF", ES3: "SPDR STI ETF",
   YLD: "Lion-OCBC Securities APAC Financials Dividend Plus ETF",
 };
+// Defaults for the SGD/MYR alert settings -- must match FX_DEFAULT_SETTINGS in backend/src/fx.js.
+const FX_DEFAULTS = { thresholdPct: 1.0, monthlySpendMYR: 7000, monthsToConvert: 3 };
 function safetyFlag(payoutRatio) {
   if (payoutRatio === null || payoutRatio === undefined || payoutRatio === "") return { level: "none", text: "No data" };
   const pr = Number(payoutRatio);
@@ -301,6 +303,16 @@ export default function App() {
   const progressPct = Math.min(100, (computed.totalMonthlyIncome / data.goal) * 100);
   const navItems = [["dashboard", "Dashboard"], ["portfolio", "Portfolio"], ["gates", "Buy Criteria"], ["strategy", "Strategy"], ["journal", "Journal"]];
 
+  // SGD/MYR alert: values come from data.fx, which the backend check-in maintains.
+  const fxSettings = { ...FX_DEFAULTS, ...((data.fx && data.fx.settings) || {}) };
+  const fxLatest = (data.fx && data.fx.latest) || null;
+  const fxHasAvg = !!(fxLatest && fxLatest.avg);
+  const fxAbove = fxHasAvg && fxLatest.deviationPct >= fxSettings.thresholdPct;
+  const fxStale = !!(fxLatest && (Date.now() - Date.parse(fxLatest.date)) / 86400000 > 4);
+  const updateFxSetting = (field, value) => save({ ...data, fx: { ...(data.fx || {}), settings: { ...fxSettings, [field]: value } } });
+  const fxSuggestedMyr = fxSettings.monthsToConvert > 0 && fxSettings.monthlySpendMYR > 0 ? fxSettings.monthsToConvert * fxSettings.monthlySpendMYR : 0;
+  const fxSuggestedSgd = fxLatest && fxLatest.rate > 0 && fxSuggestedMyr > 0 ? Math.round(fxSuggestedMyr / fxLatest.rate / 100) * 100 : null;
+
   return (
     <div style={{ background: COLORS.bg, minHeight: "100vh", color: COLORS.textPrimary, fontFamily: "sans-serif", display: "flex" }}>
       <div style={{ width: sidebarOpen ? 200 : 52, background: COLORS.sidebar, padding: sidebarOpen ? "20px 12px" : "20px 8px", flexShrink: 0, transition: "width 0.2s" }}>
@@ -342,6 +354,12 @@ export default function App() {
               <Card label="Blended yield" value={`${fmt(computed.blendedAnnualYield)}%`} sub="Weighted, on current price" />
               <Card label="Next dividend" value={nextDivOverall ? nextDivOverall.id : "-"} accent={COLORS.green}
                 sub={nextDivOverall ? `Ex ${nextDivOverall.exDate} · Pay ${nextDivOverall.payDate}${nextDivOverall.estimated ? " (est.)" : ""}` : "None on file"} />
+              <Card label="SGD / MYR" value={fxLatest ? fmt(fxLatest.rate, 4) : "-"}
+                accent={fxAbove ? COLORS.green : fxStale ? COLORS.amber : undefined}
+                sub={!fxLatest ? "Run a check-in to load"
+                  : fxStale ? `⚠️ Stale data (latest ${fxLatest.date})`
+                  : fxHasAvg ? `${fxAbove ? "ABOVE ALERT LINE · " : ""}${fxLatest.deviationPct >= 0 ? "+" : ""}${fmt(fxLatest.deviationPct)}% vs ${fmt(fxLatest.avg, 4)} avg (alert at +${fmt(fxSettings.thresholdPct, 1)}%)`
+                  : "Building rate history…"} />
             </div>
 
             <div style={{ marginBottom: 28 }}>
@@ -718,6 +736,19 @@ export default function App() {
               <Button variant="orange" onClick={saveStrategy}>Save strategy</Button>
               {!strategySaved && <span style={{ fontSize: 12, color: COLORS.amber }}>Unsaved changes</span>}
               {strategySaved && data.strategyNotes === strategyDraft && <span style={{ fontSize: 12, color: COLORS.textMuted }}>Saved</span>}
+            </div>
+
+            <div style={{ marginTop: 40 }}>
+              <SectionTitle sub="Telegram alert when SGD is unusually strong against MYR -- a good moment to convert extra. Rate source: Frankfurter (daily market reference rate). When it fires, still compare the final MYR amount in Wise and YouBiz before sending.">SGD / MYR Alert</SectionTitle>
+              <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <Field label="Alert when above 90-day average by (%)" value={fxSettings.thresholdPct} onChange={(v) => updateFxSetting("thresholdPct", v)} width={90} />
+                <Field label="Monthly MYR spending (RM)" value={fxSettings.monthlySpendMYR} onChange={(v) => updateFxSetting("monthlySpendMYR", v)} width={110} prefix="RM" />
+                <Field label="Months of spending to convert" value={fxSettings.monthsToConvert} onChange={(v) => updateFxSetting("monthsToConvert", v)} width={70} />
+              </div>
+              <div style={{ fontSize: 13, color: COLORS.textMuted, marginTop: 10, lineHeight: 1.6 }}>
+                {fxSuggestedSgd !== null ? `When the alert fires it suggests about S$${fmt(fxSuggestedSgd, 0)} (RM${fmt(fxSuggestedMyr, 0)}) at today's rate. ` : ""}
+                After an alert you get a reminder every 3 days while the rate stays high, and a new alert only after it has been below the line for 7 days in a row. Changes apply from the next check-in.
+              </div>
             </div>
           </>
         )}

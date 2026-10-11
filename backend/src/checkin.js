@@ -3,6 +3,7 @@ import { fetchLatestPrice, fetchHistory } from "./priceFeed.js";
 import { fetchDividendsSg, groupByPayDate } from "./dividendsSg.js";
 import { evaluateIndexDca, evaluateReit, evaluateBankPb, rsi } from "./criteria.js";
 import { sendTelegramMessage } from "./telegram.js";
+import { refreshFx } from "./fx.js";
 
 const TICKER_ICON = { CLR: "💰", G3B: "📈", U11: "🏦", D05: "🏦" };
 
@@ -293,6 +294,16 @@ export async function runCheckin(trigger = "scheduled") {
       newState.tier2LastFired = null;
     }
     holding.alertState = newState;
+  }
+
+  // SGD/MYR rate monitoring. Wrapped so a problem here can never break the
+  // portfolio check-in above -- it just shows up as a Journal warning instead.
+  try {
+    const fxResult = await refreshFx(data, journal);
+    alertsFired.push(...fxResult.alertsFired);
+  } catch (e) {
+    console.error("SGD/MYR check failed:", e);
+    journal(data, `⚠️ SGD/MYR: check failed unexpectedly (${e.message}) -- portfolio check-in itself was unaffected.`);
   }
 
   // Watchlist: just refresh price + append to history, no criteria evaluated
