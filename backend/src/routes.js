@@ -1,6 +1,7 @@
 import express from "express";
 import { loadData, saveData } from "./store.js";
 import { runCheckin } from "./checkin.js";
+import * as cashflow from "./cashflow.js";
 
 const router = express.Router();
 
@@ -35,5 +36,22 @@ router.post("/reset-alerts", (req, res) => {
   saveData(data);
   res.json({ reset: ticker || "all" });
 });
+
+// ---- Cashflow ledger (separate file, entry-by-entry -- see cashflow.js) ----
+const cfSend = (res, fn) => {
+  try {
+    const out = fn();
+    if (out.error) return res.status(out.status || 400).json({ error: out.error });
+    return res.json(out);
+  } catch (e) {
+    console.error("cashflow error:", e);
+    return res.status(500).json({ error: e.message });
+  }
+};
+router.get("/cashflow", (req, res) => cfSend(res, () => cashflow.getAll()));
+router.post("/cashflow/entries", (req, res) => cfSend(res, () => cashflow.addEntry(req.body)));
+router.put("/cashflow/entries/:id", (req, res) => cfSend(res, () => cashflow.updateEntry(req.params.id, req.body)));
+router.delete("/cashflow/entries/:id", (req, res) => cfSend(res, () => cashflow.deleteEntry(req.params.id)));
+router.put("/cashflow/categories", (req, res) => cfSend(res, () => cashflow.setCategories(req.body)));
 
 export default router;

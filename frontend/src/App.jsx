@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import Cashflow from "./Cashflow.jsx";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, ComposedChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine
@@ -301,7 +302,7 @@ export default function App() {
   if (loading || !data || !computed) return <div style={{ color: COLORS.textSecondary, padding: 40, fontFamily: "sans-serif", background: COLORS.bg, minHeight: "100vh" }}>Loading dashboard…</div>;
 
   const progressPct = Math.min(100, (computed.totalMonthlyIncome / data.goal) * 100);
-  const navItems = [["dashboard", "Dashboard"], ["portfolio", "Portfolio"], ["gates", "Buy Criteria"], ["strategy", "Strategy"], ["journal", "Journal"]];
+  const navItems = [["dashboard", "Dashboard"], ["portfolio", "Portfolio"], ["gates", "Buy Criteria"], ["cashflow", "Cashflow"], ["strategy", "Strategy"], ["journal", "Journal"]];
 
   // SGD/MYR alert: values come from data.fx, which the backend check-in maintains.
   const fxSettings = { ...FX_DEFAULTS, ...((data.fx && data.fx.settings) || {}) };
@@ -714,6 +715,8 @@ export default function App() {
             })}
           </>
         )}
+
+        {tab === "cashflow" && <Cashflow fx={data.fx} />}
 
         {tab === "strategy" && (
           <>
