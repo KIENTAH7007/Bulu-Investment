@@ -58,7 +58,7 @@ function describeGates(r) {
     return { tier1: `Yield above its own ${c.yieldLookbackQuarters}-quarter average, no structural breakdown`, tier2: `All of Tier 1, plus price also below its ${c.maPeriod}-day average`, purchase: "Lump sum (both tiers)" };
   }
   if (c.type === "bank-pb") {
-    return { tier1: `P/B below its own ${c.pbLookbackYears}-year average (${c.pbHistoricalAvg ?? "?"}x), trend still healthy`, tier2: `P/B has dropped into the cheap band (<= ${c.pbHistoricalBandLow ?? "?"}x)`, purchase: "Lump sum (both tiers)" };
+    return { tier1: `P/B below its own ${c.pbLookbackYears}-year median (${c.pbHistoricalAvg ?? "?"}x), trend still healthy`, tier2: `P/B has dropped into the cheap band (<= ${c.pbHistoricalBandLow ?? "?"}x)`, purchase: "Lump sum (both tiers)" };
   }
   return { tier1: "Not configured", tier2: "Not configured", purchase: "-" };
 }
@@ -594,17 +594,18 @@ export default function App() {
                 const avg = r.criteria.pbHistoricalAvg, bandLow = r.criteria.pbHistoricalBandLow;
                 const series = pbSeries(r.priceHistory, r.bookValuePerShare).map((p) => ({ ...p, avg, bandLow }));
                 chart = (
-                  <div style={{ height: 220 }}>
-                    <ResponsiveContainer width="100%" height="100%">
+                  <div style={{ height: 240 }}>
+                    <div style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 4 }}>P/B ratio vs its {r.criteria.pbLookbackYears || 5}-year median and cheap band. History is drawn using the latest book value (S${r.bookValuePerShare}) for every date, so older points are approximate; today's reading is exact.</div>
+                    <ResponsiveContainer width="100%" height="88%">
                       <ComposedChart data={series}>
                         <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} vertical={false} />
                         <XAxis dataKey="date" tick={{ fill: COLORS.textMuted, fontSize: 11 }} minTickGap={40} />
                         <YAxis tick={{ fill: COLORS.textMuted, fontSize: 11 }} domain={["auto", "auto"]} />
                         <Tooltip contentStyle={{ background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }} />
-                        {bandLow != null && <ReferenceLine y={bandLow} stroke={COLORS.red} strokeDasharray="4 4" label={{ value: "Cheap band", fill: COLORS.red, fontSize: 11, position: "insideBottomLeft" }} />}
-                        {avg != null && <ReferenceLine y={avg} stroke={COLORS.amber} strokeDasharray="4 4" label={{ value: "5yr average", fill: COLORS.amber, fontSize: 11, position: "insideTopLeft" }} />}
+                        {bandLow != null && <ReferenceLine y={bandLow} stroke={COLORS.red} strokeDasharray="4 4" label={{ value: "Cheap band", fill: COLORS.red, fontSize: 11, position: "insideBottomRight" }} />}
+                        {avg != null && <ReferenceLine y={avg} stroke={COLORS.amber} strokeDasharray="4 4" label={{ value: `${r.criteria.pbLookbackYears || 5}yr median`, fill: COLORS.amber, fontSize: 11, position: "insideTopLeft" }} />}
                         <Line type="monotone" dataKey="pb" name="P/B ratio" stroke={COLORS.orange} strokeWidth={2} dot={false} />
-                        {avg != null && <Line type="monotone" dataKey="avg" name="5yr average" stroke={COLORS.amber} strokeWidth={1} strokeDasharray="4 4" dot={false} legendType="none" />}
+                        {avg != null && <Line type="monotone" dataKey="avg" name="Median" stroke={COLORS.amber} strokeWidth={1} strokeDasharray="4 4" dot={false} legendType="none" />}
                         {bandLow != null && <Line type="monotone" dataKey="bandLow" name="Cheap band" stroke={COLORS.red} strokeWidth={1} strokeDasharray="4 4" dot={false} legendType="none" />}
                       </ComposedChart>
                     </ResponsiveContainer>

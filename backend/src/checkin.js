@@ -4,6 +4,7 @@ import { fetchDividendsSg, groupByPayDate } from "./dividendsSg.js";
 import { evaluateIndexDca, evaluateReit, evaluateBankPb, rsi } from "./criteria.js";
 import { sendTelegramMessage } from "./telegram.js";
 import { refreshFx } from "./fx.js";
+import { applyPbResearch, cleanYieldHistory } from "./research.js";
 
 const TICKER_ICON = { CLR: "💰", G3B: "📈", U11: "🏦", D05: "🏦" };
 
@@ -230,6 +231,9 @@ export async function runCheckin(trigger = "scheduled") {
   const data = loadData();
   const alertsFired = [];
 
+  // Apply the researched bank P/B inputs once per research version (no-op afterwards).
+  applyPbResearch(data, journal, todayISO());
+
   for (const holding of data.holdings) {
     await ensureHistory(holding);
 
@@ -245,6 +249,10 @@ export async function runCheckin(trigger = "scheduled") {
     }
 
     await refreshDividends(holding, data);
+    const removedYieldPoints = cleanYieldHistory(holding);
+    if (removedYieldPoints.length) {
+      journal(data, `🧹 ${holding.id}: removed ${removedYieldPoints.length} isolated bad point(s) from yield history (${removedYieldPoints.map((p) => `${typeof p === "number" ? p : p.yield}%${p.date ? " on " + p.date : ""}`).join(", ")}) -- they were out of line with the readings on either side and were skewing the yield average.`);
+    }
     checkPbStaleness(holding, data);
 
     const critType = holding.criteria?.type;

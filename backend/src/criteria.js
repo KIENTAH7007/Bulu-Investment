@@ -106,7 +106,7 @@ export function evaluateBankPb(holding) {
 
   return {
     tier1, tier2, trendWeak,
-    reason1: tier1 ? `P/B ${pb.toFixed(2)}x below its ${criteria.pbLookbackYears}-year average ${pbHistoricalAvg.toFixed(2)}x${trendNote}` : null,
+    reason1: tier1 ? `P/B ${pb.toFixed(2)}x below its ${criteria.pbLookbackYears}-year median ${pbHistoricalAvg.toFixed(2)}x${trendNote}` : null,
     reason2: tier2 ? `P/B has dropped into the historically cheap band (<= ${pbHistoricalBandLow.toFixed(2)}x)${trendNote}` : null,
     purchaseType: "lumpsum",
     pb,
