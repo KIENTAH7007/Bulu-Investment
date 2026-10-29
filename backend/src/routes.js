@@ -14,6 +14,17 @@ router.put("/data", (req, res) => {
   res.json(saved);
 });
 
+// DCA Planner settings (budget, lot sizes, custom split). Saved on their own so tweaking them never
+// rewrites the whole portfolio -- and a check-in running at the same moment can't be overwritten by it.
+router.put("/planner-settings", (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return res.status(400).json({ error: "Expected a settings object" });
+  const data = loadData();
+  data.plannerSettings = body;
+  saveData(data);
+  res.json(data.plannerSettings);
+});
+
 // Manual trigger, e.g. for testing after deploy: POST /api/checkin
 router.post("/checkin", async (req, res) => {
   try {

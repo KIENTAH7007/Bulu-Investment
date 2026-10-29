@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Cashflow from "./Cashflow.jsx";
+import DcaPlanner from "./DcaPlanner.jsx";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, ComposedChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine
@@ -175,6 +176,15 @@ export default function App() {
       await fetch("/api/data", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next) });
     } catch (e) { console.error("Save failed", e); }
     setSaving(false);
+  }, []);
+
+  // DCA Planner settings (budget, lot sizes, ...) save through their own small endpoint, so tweaking
+  // them never re-sends the whole portfolio. Local state is updated too so a later full save keeps them.
+  const savePlannerSettings = useCallback(async (s) => {
+    setData((prev) => (prev ? { ...prev, plannerSettings: s } : prev));
+    try {
+      await fetch("/api/planner-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(s) });
+    } catch (e) { console.error("Planner settings save failed", e); }
   }, []);
 
   const runCheckinNow = async () => {
@@ -740,6 +750,11 @@ export default function App() {
               <Button variant="orange" onClick={saveStrategy}>Save strategy</Button>
               {!strategySaved && <span style={{ fontSize: 12, color: COLORS.amber }}>Unsaved changes</span>}
               {strategySaved && data.strategyNotes === strategyDraft && <span style={{ fontSize: 12, color: COLORS.textMuted }}>Saved</span>}
+            </div>
+
+            <div style={{ marginTop: 40 }}>
+              <SectionTitle sub="Compare ways to split a round of buying across your holdings -- what each one does to your average cost and monthly dividends. Planning only: nothing here changes your Portfolio.">DCA Planner</SectionTitle>
+              <DcaPlanner holdings={data.holdings} initial={data.plannerSettings} onSave={savePlannerSettings} />
             </div>
 
             <div style={{ marginTop: 40 }}>
