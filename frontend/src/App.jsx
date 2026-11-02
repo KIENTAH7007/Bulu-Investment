@@ -336,7 +336,7 @@ export default function App() {
               {data.lastCheckin ? `Last check-in: ${new Date(data.lastCheckin.at).toLocaleString("en-SG")}` : "No check-in yet"}
             </div>
             {navItems.map(([key, label]) => (
-              <div key={key} onClick={() => setTab(key)} style={{ padding: "10px 10px", borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: "pointer", marginBottom: 3, background: tab === key ? COLORS.orange : "transparent", color: tab === key ? COLORS.sidebar : COLORS.textSecondary }}>{label}</div>
+              <div key={key} onClick={() => { setTab(key); setSidebarOpen(false); }} style={{ padding: "10px 10px", borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: "pointer", marginBottom: 3, background: tab === key ? COLORS.orange : "transparent", color: tab === key ? COLORS.sidebar : COLORS.textSecondary }}>{label}</div>
             ))}
             <div style={{ marginTop: 16, padding: "0 8px" }}>
               <Button onClick={runCheckinNow} disabled={checkinRunning}>{checkinRunning ? "Running…" : "Run check-in now"}</Button>

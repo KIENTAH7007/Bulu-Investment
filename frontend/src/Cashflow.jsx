@@ -88,18 +88,23 @@ export default function Cashflow({ fx }) {
   const personOk = (e) => person === "ALL" || e.who === person;
 
   // Sum entries of one type in a date test, in the display currency. Entries with no usable rate are counted, not guessed.
+  // Spending categories ticked as "Counts as investing" (Monthly summary) are split out of Spending into Invested.
+  const invSet = useMemo(() => new Set(((cf && cf.settings && cf.settings.investCategories) || []).map((c) => String(c).toLowerCase())), [cf]);
+  const bucketOf = useCallback((e) => (e.type === "out" && invSet.has(String(e.category).toLowerCase()) ? "invested" : e.type), [invSet]);
+
   const sumBy = useCallback((test) => {
-    const out = { in: 0, out: 0, unconverted: 0, transfers: 0, transferSGD: 0, native: { in: { SGD: 0, MYR: 0 }, out: { SGD: 0, MYR: 0 } } };
+    const out = { in: 0, out: 0, invested: 0, unconverted: 0, transfers: 0, transferSGD: 0, native: { in: { SGD: 0, MYR: 0 }, out: { SGD: 0, MYR: 0 }, invested: { SGD: 0, MYR: 0 } } };
     for (const e of entries) {
       if (!personOk(e) || !test(e.date)) continue;
       if (e.type === "transfer") { out.transfers++; const v = convert(e, "SGD", history); if (v !== null) out.transferSGD += v; continue; }
-      out.native[e.type][e.currency] += e.amount;
+      const b = bucketOf(e);
+      out.native[b][e.currency] += e.amount;
       const v = convert(e, cur, history);
-      if (v === null) out.unconverted++; else out[e.type] += v;
+      if (v === null) out.unconverted++; else out[b] += v;
     }
     return out;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries, history, cur, person]);
+  }, [entries, history, cur, person, bucketOf]);
 
   const totals = useMemo(() => sumBy(inPeriod), [sumBy, inPeriod]);
   const prev = useMemo(() => {
@@ -108,8 +113,9 @@ export default function Cashflow({ fx }) {
     return null;
   }, [mode, month, year, sumBy]);
 
-  const net = totals.in - totals.out;
-  const savingsRate = totals.in > 0 ? (net / totals.in) * 100 : null;
+  const net = totals.in - totals.out - totals.invested;
+  // Share of money in that was not spent (investing counts as kept) -- same "Kept" as the Monthly summary table.
+  const keptRate = totals.in > 0 ? ((totals.in - totals.out) / totals.in) * 100 : null;
   const vsPrev = (now, before) => (before > 0 ? `${now >= before ? "▲" : "▼"} ${fmt(Math.abs((now / before - 1) * 100), 0)}% vs ${monthLabelOrYear(prev.key)}` : null);
   const monthLabelOrYear = (k) => (k.length === 7 ? monthLabel(k) : k);
 
@@ -125,7 +131,7 @@ export default function Cashflow({ fx }) {
       const from = first < shiftMonth(last, -35) ? shiftMonth(last, -35) : first;
       keys = monthsBetween(from, ms.length && ms[ms.length - 1] > last ? ms[ms.length - 1] : last);
     }
-    const rows = keys.map((k) => ({ key: k, label: monthLabel(k, false) + (k.endsWith("-01") || k === keys[0] ? ` '${k.slice(2, 4)}` : ""), income: 0, spending: 0 }));
+    const rows = keys.map((k) => ({ key: k, label: monthLabel(k, false) + (k.endsWith("-01") || k === keys[0] ? ` '${k.slice(2, 4)}` : ""), income: 0, spending: 0, invested: 0 }));
     const idx = new Map(rows.map((r, i) => [r.key, i]));
     for (const e of entries) {
       if (e.type === "transfer" || !personOk(e)) continue;
@@ -133,11 +139,13 @@ export default function Cashflow({ fx }) {
       if (i === undefined) continue;
       const v = convert(e, cur, history);
       if (v === null) continue;
-      if (e.type === "in") rows[i].income += v; else rows[i].spending += v;
+      const b = bucketOf(e);
+      if (b === "in") rows[i].income += v; else if (b === "invested") rows[i].invested += v; else rows[i].spending += v;
     }
-    return rows.map((r) => ({ ...r, income: Math.round(r.income * 100) / 100, spending: Math.round(r.spending * 100) / 100, net: Math.round((r.income - r.spending) * 100) / 100 }));
+    const r2 = (n) => Math.round(n * 100) / 100;
+    return rows.map((r) => ({ ...r, income: r2(r.income), spending: r2(r.spending), invested: r2(r.invested), net: r2(r.income - r.spending - r.invested) }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries, history, cur, person, mode, month, year]);
+  }, [entries, history, cur, person, mode, month, year, bucketOf]);
 
   // Category breakdown for the chosen period
   const byCategory = useMemo(() => {
@@ -283,8 +291,10 @@ export default function Cashflow({ fx }) {
         <StatCard label={`Money in · ${periodText}`} value={money(totals.in, cur)} accent={COLORS.green} sub={prev && vsPrev(totals.in, prev.t.in)} />
         <StatCard label={`Spending · ${periodText}`} value={money(totals.out, cur)} accent={COLORS.orange}
           sub={[totals.native.out.MYR > 0 && `RM${fmt(totals.native.out.MYR, 0)} paid in MYR`, totals.native.out.SGD > 0 && `S$${fmt(totals.native.out.SGD, 0)} paid in SGD`].filter(Boolean).join(" · ") || (prev && vsPrev(totals.out, prev.t.out))} />
-        <StatCard label="Net" value={money(net, cur)} accent={net >= 0 ? COLORS.green : COLORS.red} sub="Money in minus spending" />
-        <StatCard label="Savings rate" value={savingsRate === null ? "-" : `${fmt(savingsRate, 0)}%`} accent={savingsRate === null ? undefined : savingsRate >= 0 ? COLORS.green : COLORS.red} sub={savingsRate === null ? "No income in this period" : "Net as a share of money in"} />
+        <StatCard label={`Invested · ${periodText}`} value={money(totals.invested, cur)} accent={COLORS.blue}
+          sub={invSet.size === 0 ? "Tick your investing category under Monthly summary" : ([totals.native.invested.MYR > 0 && `RM${fmt(totals.native.invested.MYR, 0)} paid in MYR`, totals.native.invested.SGD > 0 && `S$${fmt(totals.native.invested.SGD, 0)} paid in SGD`].filter(Boolean).join(" · ") || (prev && vsPrev(totals.invested, prev.t.invested)))} />
+        <StatCard label="Net" value={money(net, cur)} accent={net >= 0 ? COLORS.green : COLORS.red}
+          sub={`Money in − spending − invested${keptRate === null ? "" : ` · kept ${fmt(keptRate, 0)}% of money in`}`} />
       </div>
       <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>
         {totals.transfers > 0 ? `${totals.transfers} currency exchange${totals.transfers > 1 ? "s" : ""} in this period (about S$${fmt(totals.transferSGD, 0)}) are recorded but not counted as income or spending. ` : ""}
@@ -292,7 +302,7 @@ export default function Cashflow({ fx }) {
       </div>
 
       {/* Trend chart */}
-      <Section sub={`Income vs spending by month in ${cur}, with the net line.${mode === "month" ? " Shows the 12 months up to the selected month." : mode === "all" ? " Shows up to the last 36 months." : ""}`}>Trend</Section>
+      <Section sub={`Money in, spending and invested by month in ${cur}, with the net line (money in − spending − invested).${mode === "month" ? " Shows the 12 months up to the selected month." : mode === "all" ? " Shows up to the last 36 months." : ""}`}>Trend</Section>
       {entries.length === 0 ? (
         <div style={{ color: COLORS.textMuted, fontStyle: "italic", padding: "12px 0" }}>No records yet. Add the first one below, or from the phone entry page.</div>
       ) : (
@@ -306,6 +316,7 @@ export default function Cashflow({ fx }) {
               <Legend wrapperStyle={{ fontSize: 13, color: COLORS.textSecondary }} />
               <Bar dataKey="income" name="Money in" fill={COLORS.green} radius={[3, 3, 0, 0]} maxBarSize={26} />
               <Bar dataKey="spending" name="Spending" fill={COLORS.orange} radius={[3, 3, 0, 0]} maxBarSize={26} />
+              <Bar dataKey="invested" name="Invested" fill={COLORS.blue} radius={[3, 3, 0, 0]} maxBarSize={26} />
               <Line dataKey="net" name="Net" stroke={COLORS.amber} strokeWidth={2} dot={{ r: 3, fill: COLORS.amber }} type="monotone" />
             </ComposedChart>
           </ResponsiveContainer>

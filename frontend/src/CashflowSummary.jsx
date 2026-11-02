@@ -144,7 +144,7 @@ export default function CashflowSummary({ entries, history, cur, personOk, setti
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 16 }}>
         <div style={{ flex: "1 1 340px", background: COLORS.surface, border: `0.5px solid ${COLORS.border}`, borderRadius: 10, padding: 14 }}>
           <div style={{ fontSize: 13, color: COLORS.amber, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4, fontWeight: 600 }}>Cash on hand at the start</div>
-          <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>Optional. The running total begins in this month with this much cash. Leave the amount empty to start from 0. Records dated before this month are not included.</div>
+          <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>Optional. How much cash you hold (bank accounts, wallet) at the start of the start month. Running total = this cash + the extra cash of every month since. Leave the amount empty to start from 0. Records before the start month are not counted.</div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
             <label style={lbl}>Start month
               <input type="month" value={draft.month} onChange={(e) => setDraft((d) => ({ ...d, month: e.target.value }))} style={inp} />
