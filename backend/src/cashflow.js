@@ -21,8 +21,31 @@ const DEFAULT_CATEGORIES = {
   out: ["Rent", "Food & dining", "Groceries", "Transport & fuel", "Utilities & internet", "Dog", "Health", "Shopping", "Travel", "Other"],
 };
 
+// Settings for the Monthly summary: cash on hand when the running total starts, which month it
+// starts from, and which spending categories are really investing (counted as saved, not spent).
+const DEFAULT_SETTINGS = { openingBalance: 0, openingCurrency: "SGD", openingMonth: null, investCategories: [] };
+
+function normalizeSettings(s) {
+  const out = { ...DEFAULT_SETTINGS, investCategories: [] };
+  if (!s || typeof s !== "object") return out;
+  const bal = typeof s.openingBalance === "number" ? s.openingBalance : parseFloat(s.openingBalance);
+  if (isFinite(bal) && Math.abs(bal) <= 1e9) out.openingBalance = Math.round(bal * 100) / 100;
+  if (CURRENCIES.includes(s.openingCurrency)) out.openingCurrency = s.openingCurrency;
+  if (typeof s.openingMonth === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(s.openingMonth)) out.openingMonth = s.openingMonth;
+  if (Array.isArray(s.investCategories)) {
+    const seen = new Set();
+    for (const raw of s.investCategories) {
+      const c = typeof raw === "string" ? raw.trim() : "";
+      if (!c || c.length > 40 || seen.has(c.toLowerCase()) || out.investCategories.length >= 50) continue;
+      seen.add(c.toLowerCase());
+      out.investCategories.push(c);
+    }
+  }
+  return out;
+}
+
 function fresh() {
-  return { version: 1, categories: { in: [...DEFAULT_CATEGORIES.in], out: [...DEFAULT_CATEGORIES.out] }, entries: [] };
+  return { version: 1, categories: { in: [...DEFAULT_CATEGORIES.in], out: [...DEFAULT_CATEGORIES.out] }, entries: [], settings: normalizeSettings(null) };
 }
 
 function readStore() {
@@ -43,6 +66,7 @@ function readStore() {
       out: Array.isArray(parsed?.categories?.out) ? parsed.categories.out : base.categories.out,
     },
     entries: Array.isArray(parsed?.entries) ? parsed.entries : [],
+    settings: normalizeSettings(parsed?.settings),
   };
 }
 
@@ -87,7 +111,23 @@ export function validateEntry(body, store) {
 
 export function getAll() {
   const s = readStore();
-  return { categories: s.categories, people: PEOPLE, entries: s.entries };
+  return { categories: s.categories, people: PEOPLE, entries: s.entries, settings: s.settings };
+}
+
+/** Saves the Monthly summary settings. Rejects clearly bad input instead of quietly storing a default. */
+export function setSettings(body) {
+  const b = body || {};
+  if (b.openingBalance !== undefined) {
+    const n = typeof b.openingBalance === "number" ? b.openingBalance : parseFloat(b.openingBalance);
+    if (!isFinite(n) || Math.abs(n) > 1e9) return { error: "openingBalance must be a number" };
+  }
+  if (b.openingCurrency !== undefined && !CURRENCIES.includes(b.openingCurrency)) return { error: "openingCurrency must be SGD or MYR" };
+  if (b.openingMonth !== undefined && b.openingMonth !== null && !/^\d{4}-(0[1-9]|1[0-2])$/.test(b.openingMonth)) return { error: "openingMonth must look like 2026-11" };
+  if (b.investCategories !== undefined && !Array.isArray(b.investCategories)) return { error: "investCategories must be a list" };
+  const store = readStore();
+  store.settings = normalizeSettings({ ...store.settings, ...b });
+  writeStore(store);
+  return { settings: store.settings };
 }
 
 /**

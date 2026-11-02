@@ -4,6 +4,7 @@ import {
   COLORS, H, PEOPLE, CURRENCIES, TYPE_LABEL, TYPE_COLOR, fmt, money, localDateISO, newClientId,
   monthLabel, shiftMonth, monthsBetween, convert, buildCsv,
 } from "./cashflowShared.js";
+import CashflowSummary from "./CashflowSummary.jsx";
 
 const inp = { background: COLORS.surfaceRaised, border: `0.5px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.textPrimary, fontSize: 14, padding: "7px 9px" };
 const lbl = { display: "flex", flexDirection: "column", gap: 4, fontSize: 13, color: COLORS.textSecondary };
@@ -219,6 +220,14 @@ export default function Cashflow({ fx }) {
     saveCats({ ...categories, [t]: categories[t].filter((c) => c !== name) });
   };
 
+  // Monthly summary settings (cash at the start, which categories count as investing).
+  const saveSettings = async (patch) => {
+    const r = await fetch("/api/cashflow/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+    setCf((c) => ({ ...c, settings: d.settings }));
+  };
+
   const exportCsv = () => {
     const blob = new Blob([buildCsv([...entries].sort((a, b) => a.date.localeCompare(b.date)), history)], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -302,6 +311,9 @@ export default function Cashflow({ fx }) {
           </ResponsiveContainer>
         </div>
       )}
+
+      {/* Monthly summary: extra cash per month + running total */}
+      <CashflowSummary entries={entries} history={history} cur={cur} personOk={personOk} settings={cf.settings} categories={categories} onSaveSettings={saveSettings} />
 
       {/* Category breakdown */}
       <Section sub={`Where it ${breakdown === "out" ? "went" : "came from"} in ${periodText}, in ${cur}.`}>Breakdown</Section>

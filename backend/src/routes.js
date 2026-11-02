@@ -64,5 +64,6 @@ router.post("/cashflow/entries", (req, res) => cfSend(res, () => cashflow.addEnt
 router.put("/cashflow/entries/:id", (req, res) => cfSend(res, () => cashflow.updateEntry(req.params.id, req.body)));
 router.delete("/cashflow/entries/:id", (req, res) => cfSend(res, () => cashflow.deleteEntry(req.params.id)));
 router.put("/cashflow/categories", (req, res) => cfSend(res, () => cashflow.setCategories(req.body)));
+router.put("/cashflow/settings", (req, res) => cfSend(res, () => cashflow.setSettings(req.body)));
 
 export default router;
